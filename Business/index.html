@@ -1,0 +1,730 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Business Board</title>
+<style>
+  * { box-sizing: border-box; }
+  :root {
+    --bg: #10141b;
+    --panel: #1a202a;
+    --panel-2: #222a36;
+    --line: rgba(255,255,255,0.09);
+    --ink: #e9ecf2;
+    --muted: #8c96a5;
+    --accent: #6fd39b;
+    --board: #16332a;
+    --tile: #f3efe4;
+    --tile-ink: #23282f;
+  }
+  html, body {
+    margin: 0; padding: 0; min-height: 100%;
+    background: var(--bg); color: var(--ink);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    -webkit-text-size-adjust: 100%;
+  }
+  body {
+    display: flex; flex-direction: column; align-items: center;
+    gap: 14px; padding: 12px;
+    padding-top: max(12px, env(safe-area-inset-top));
+    padding-bottom: max(12px, env(safe-area-inset-bottom));
+  }
+
+  /* ---------------------------------------------------------- board ---- */
+  #board {
+    width: min(94vw, 78vh, 760px);
+    aspect-ratio: 1;
+    display: grid;
+    grid-template-columns: 1.45fr repeat(9, 1fr) 1.45fr;
+    grid-template-rows: 1.45fr repeat(9, 1fr) 1.45fr;
+    gap: 2px; padding: 2px;
+    background: #0d1f1a;
+    border: 2px solid #0a1714;
+    border-radius: 10px;
+    box-shadow: 0 22px 50px rgba(0,0,0,0.5);
+  }
+
+  .tile {
+    position: relative;
+    background: var(--tile); color: var(--tile-ink);
+    display: flex; flex-direction: column;
+    padding: 3px 3px 2px;
+    overflow: hidden;
+    font-size: clamp(5px, 0.95vh, 9px);
+    line-height: 1.12;
+  }
+  .tile .bar { height: 20%; min-height: 7px; margin: -3px -3px 2px; }
+  .tile .nm { font-weight: 650; letter-spacing: -0.01em; word-break: break-word; }
+  .tile .pr { margin-top: auto; color: #5d6570; font-variant-numeric: tabular-nums; }
+  .tile.corner { background: #e7e1d2; align-items: center; justify-content: center; text-align: center; }
+  .tile.corner .nm { font-size: 1.15em; }
+  .tile.special .nm { color: #4a525c; }
+  .tile.owned::after {
+    content: ''; position: absolute; inset: 0;
+    border: 2px solid var(--own); pointer-events: none;
+  }
+  .tile.here { box-shadow: inset 0 0 0 2px #ffd479; }
+
+  .tokens {
+    position: absolute; right: 2px; bottom: 2px;
+    display: flex; flex-wrap: wrap-reverse; gap: 2px; max-width: 70%;
+    justify-content: flex-end;
+  }
+  .token {
+    width: clamp(7px, 1.5vh, 13px); height: clamp(7px, 1.5vh, 13px);
+    border-radius: 50%; border: 1.5px solid rgba(0,0,0,0.45);
+    box-shadow: 0 1px 3px rgba(0,0,0,0.4);
+  }
+
+  #centre {
+    grid-column: 2 / 11; grid-row: 2 / 11;
+    background: var(--board);
+    display: grid; place-items: center; gap: 10px;
+    padding: 12px; text-align: center;
+  }
+  #centre h1 {
+    margin: 0; font-size: clamp(13px, 2.4vh, 22px);
+    letter-spacing: 0.34em; text-transform: uppercase;
+    color: #86c2a5; font-weight: 700;
+  }
+  #dice { display: flex; gap: 10px; }
+  .die {
+    width: clamp(28px, 5.4vh, 52px); height: clamp(28px, 5.4vh, 52px);
+    background: #f6f2e8; color: #1d2229;
+    border-radius: 22%;
+    display: grid; place-items: center;
+    font-size: clamp(16px, 3vh, 30px); font-weight: 700;
+    box-shadow: 0 4px 10px rgba(0,0,0,0.45);
+  }
+  .die.rolling { animation: shake .42s ease-in-out; }
+  @keyframes shake {
+    0%,100% { transform: none; }
+    25% { transform: translateY(-6px) rotate(-12deg); }
+    75% { transform: translateY(-3px) rotate(11deg); }
+  }
+  #turnName { font-size: clamp(11px, 1.9vh, 15px); font-weight: 650; }
+  #turnNote { font-size: clamp(9px, 1.5vh, 12px); color: #7fae95; min-height: 1.2em; }
+
+  /* ---------------------------------------------------------- panel ---- */
+  #panel {
+    width: min(94vw, 760px);
+    display: grid; gap: 12px;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  }
+  .card {
+    background: var(--panel); border: 1px solid var(--line);
+    border-radius: 14px; padding: 12px 14px;
+  }
+  .card h2 {
+    margin: 0 0 9px; font-size: 10px; letter-spacing: 0.14em;
+    text-transform: uppercase; color: var(--muted); font-weight: 650;
+  }
+
+  #players { display: flex; flex-direction: column; gap: 7px; }
+  .player {
+    display: grid; grid-template-columns: auto 1fr auto; gap: 9px; align-items: center;
+    padding: 7px 9px; border-radius: 10px;
+    background: var(--panel-2); border: 1px solid transparent;
+    font-size: 13px;
+  }
+  .player.active { border-color: var(--accent); background: #24313c; }
+  .player.out { opacity: 0.4; }
+  .player .dot { width: 13px; height: 13px; border-radius: 50%; border: 1.5px solid rgba(0,0,0,0.4); }
+  .player .who { font-weight: 600; }
+  .player .sub { display: block; font-size: 10.5px; color: var(--muted); font-weight: 400; }
+  .player .cash { font-variant-numeric: tabular-nums; font-weight: 650; }
+
+  #actions { display: flex; flex-wrap: wrap; gap: 8px; }
+  button {
+    font: inherit; font-size: 14px; font-weight: 600;
+    padding: 11px 16px; min-height: 44px;
+    border-radius: 10px; border: 1px solid var(--line);
+    background: var(--panel-2); color: var(--ink); cursor: pointer;
+    flex: 1 1 auto;
+  }
+  button:hover:not(:disabled) { background: #2c3543; }
+  button.primary { background: var(--accent); color: #10241a; border-color: transparent; }
+  button.primary:hover:not(:disabled) { background: #86e0b0; }
+  button:disabled { opacity: 0.4; cursor: default; }
+
+  #log {
+    height: 132px; overflow-y: auto;
+    display: flex; flex-direction: column-reverse; gap: 5px;
+    font-size: 12.5px; line-height: 1.4; color: #b6bfcc;
+  }
+  #log b { color: var(--ink); }
+
+  #setup { display: flex; gap: 10px; flex-wrap: wrap; }
+  #setup label {
+    flex: 1 1 100px; display: flex; flex-direction: column; gap: 6px;
+    font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted);
+  }
+  select {
+    font: inherit; font-size: 14px; color: var(--ink); background: var(--panel-2);
+    border: 1px solid var(--line); border-radius: 9px; padding: 9px; min-height: 42px;
+  }
+
+  #banner {
+    position: fixed; inset: 0; z-index: 20;
+    display: grid; place-items: center; text-align: center; padding: 24px;
+    background: rgba(8, 11, 16, 0.82); backdrop-filter: blur(6px);
+  }
+  #banner[hidden] { display: none; }
+  #banner h1 { margin: 0 0 6px; font-size: clamp(26px, 7vw, 40px); }
+  #banner p { margin: 0 0 20px; color: var(--muted); }
+
+  @media (max-width: 560px) {
+    #panel { grid-template-columns: 1fr; }
+    #log { height: 108px; }
+  }
+</style>
+</head>
+<body>
+
+<div id="board"></div>
+
+<div id="panel">
+  <div class="card">
+    <h2>Players</h2>
+    <div id="players"></div>
+  </div>
+
+  <div class="card">
+    <h2>Turn</h2>
+    <div id="actions">
+      <button id="rollBtn" class="primary" type="button">Roll</button>
+      <button id="buyBtn" type="button" disabled>Buy</button>
+      <button id="passBtn" type="button" disabled>Pass</button>
+      <button id="endBtn" type="button" disabled>End turn</button>
+    </div>
+    <div style="height:12px"></div>
+    <h2>Log</h2>
+    <div id="log"></div>
+  </div>
+
+  <div class="card">
+    <h2>New game</h2>
+    <div id="setup">
+      <label>Players
+        <select id="playerCount">
+          <option value="2">2</option>
+          <option value="3">3</option>
+          <option value="4" selected>4</option>
+        </select>
+      </label>
+      <label>Opponents
+        <select id="opponents">
+          <option value="ai" selected>Computer</option>
+          <option value="human">Pass and play</option>
+        </select>
+      </label>
+    </div>
+    <div style="height:10px"></div>
+    <button id="newBtn" type="button">Start new game</button>
+  </div>
+</div>
+
+<div id="banner" hidden>
+  <div>
+    <h1 id="bannerTitle">Player 1 wins</h1>
+    <p id="bannerText">Everyone else is bankrupt</p>
+    <button id="bannerBtn" class="primary" type="button">Play again</button>
+  </div>
+</div>
+
+<script type="module">
+// ---------------------------------------------------------------- board data
+// A 40-space board. Property names are cities; the colour groups, prices and
+// rents are our own, tuned for a faster game than the classic table.
+const COLORS = {
+  maroon: '#8d5340',
+  sky:    '#8fc3e8',
+  pink:   '#d47fae',
+  orange: '#e59a4a',
+  red:    '#cf5148',
+  yellow: '#e6ca55',
+  green:  '#4fa86a',
+  blue:   '#4a72c4',
+  rail:   '#3b4350',
+  util:   '#6d7684',
+};
+
+// type: go | prop | rail | util | tax | chance | chest | jail | rest | tojail
+const TILES = [
+  { type: 'go',     name: 'Start' },
+  { type: 'prop',   name: 'Agra',        group: 'maroon', price: 60,  rent: 6 },
+  { type: 'chest',  name: 'Treasury' },
+  { type: 'prop',   name: 'Ajmer',       group: 'maroon', price: 60,  rent: 6 },
+  { type: 'tax',    name: 'Income Tax',  amount: 200 },
+  { type: 'rail',   name: 'North Rail',  price: 200 },
+  { type: 'prop',   name: 'Bhopal',      group: 'sky',    price: 100, rent: 10 },
+  { type: 'chance', name: 'Chance' },
+  { type: 'prop',   name: 'Bhubaneswar', group: 'sky',    price: 100, rent: 10 },
+  { type: 'prop',   name: 'Chandigarh',  group: 'sky',    price: 120, rent: 12 },
+  { type: 'jail',   name: 'Jail' },
+  { type: 'prop',   name: 'Coimbatore',  group: 'pink',   price: 140, rent: 14 },
+  { type: 'util',   name: 'Power Grid',  price: 150 },
+  { type: 'prop',   name: 'Cuttack',     group: 'pink',   price: 140, rent: 14 },
+  { type: 'prop',   name: 'Dehradun',    group: 'pink',   price: 160, rent: 16 },
+  { type: 'rail',   name: 'East Rail',   price: 200 },
+  { type: 'prop',   name: 'Ernakulam',   group: 'orange', price: 180, rent: 18 },
+  { type: 'chest',  name: 'Treasury' },
+  { type: 'prop',   name: 'Faridabad',   group: 'orange', price: 180, rent: 18 },
+  { type: 'prop',   name: 'Gandhinagar', group: 'orange', price: 200, rent: 20 },
+  { type: 'rest',   name: 'Rest Stop' },
+  { type: 'prop',   name: 'Guwahati',    group: 'red',    price: 220, rent: 22 },
+  { type: 'chance', name: 'Chance' },
+  { type: 'prop',   name: 'Gwalior',     group: 'red',    price: 220, rent: 22 },
+  { type: 'prop',   name: 'Hyderabad',   group: 'red',    price: 240, rent: 24 },
+  { type: 'rail',   name: 'South Rail',  price: 200 },
+  { type: 'prop',   name: 'Indore',      group: 'yellow', price: 260, rent: 26 },
+  { type: 'prop',   name: 'Jaipur',      group: 'yellow', price: 260, rent: 26 },
+  { type: 'util',   name: 'Water Works', price: 150 },
+  { type: 'prop',   name: 'Jodhpur',     group: 'yellow', price: 280, rent: 28 },
+  { type: 'tojail', name: 'Go to Jail' },
+  { type: 'prop',   name: 'Kanpur',      group: 'green',  price: 300, rent: 30 },
+  { type: 'prop',   name: 'Kochi',       group: 'green',  price: 300, rent: 30 },
+  { type: 'chest',  name: 'Treasury' },
+  { type: 'prop',   name: 'Kolkata',     group: 'green',  price: 320, rent: 32 },
+  { type: 'rail',   name: 'West Rail',   price: 200 },
+  { type: 'chance', name: 'Chance' },
+  { type: 'prop',   name: 'Lucknow',     group: 'blue',   price: 350, rent: 35 },
+  { type: 'tax',    name: 'Luxury Tax',  amount: 100 },
+  { type: 'prop',   name: 'Mumbai',      group: 'blue',   price: 400, rent: 40 },
+];
+
+const START_CASH = 1500;
+const SALARY = 200;
+const PLAYER_COLORS = ['#e05a5a', '#4f9de0', '#e3b23c', '#63c98a'];
+const PLAYER_NAMES = ['Player 1', 'Player 2', 'Player 3', 'Player 4'];
+
+const money = n => '₹' + n.toLocaleString('en-IN');
+
+// ---------------------------------------------------------------- state
+const game = {
+  players: [],
+  owners: new Array(40).fill(-1),   // tile index -> player index, -1 for open
+  turn: 0,
+  phase: 'roll',                    // roll | decide | end | over
+  doubles: 0,
+  aiTimer: null,
+};
+
+function activePlayers() { return game.players.filter(p => !p.out); }
+const current = () => game.players[game.turn];
+const isAi = p => p.ai;
+
+// ---------------------------------------------------------------- setup
+function newGame() {
+  clearTimeout(game.aiTimer);
+  const count = parseInt(playerCount.value, 10);
+  const vsAi = opponents.value === 'ai';
+
+  game.players = Array.from({ length: count }, (_, i) => ({
+    name: vsAi && i > 0 ? 'Computer ' + i : PLAYER_NAMES[i],
+    color: PLAYER_COLORS[i],
+    cash: START_CASH,
+    at: 0,
+    out: false,
+    ai: vsAi && i > 0,
+  }));
+  game.owners = new Array(40).fill(-1);
+  game.turn = 0;
+  game.phase = 'roll';
+  game.doubles = 0;
+
+  logEl.innerHTML = '';
+  banner.hidden = true;
+  say('New game. ' + count + ' players, ' + money(START_CASH) + ' each.');
+  renderAll();
+  maybeAi();
+}
+
+// ---------------------------------------------------------------- turn flow
+function roll() {
+  if (game.phase !== 'roll') return;
+  const a = 1 + Math.floor(Math.random() * 6);
+  const b = 1 + Math.floor(Math.random() * 6);
+  showDice(a, b);
+
+  const p = current();
+  const isDouble = a === b;
+  game.doubles = isDouble ? game.doubles + 1 : 0;
+
+  if (game.doubles === 3) {
+    say('<b>' + p.name + '</b> rolled three doubles and goes to Jail.');
+    p.at = 10;
+    game.doubles = 0;
+    finishTurn();
+    return;
+  }
+
+  say('<b>' + p.name + '</b> rolled ' + a + ' + ' + b + ' = ' + (a + b) + (isDouble ? ' (double)' : ''));
+  advance(p, a + b);
+}
+
+function advance(p, steps) {
+  const from = p.at;
+  p.at = (p.at + steps) % 40;
+  if (p.at < from) {
+    p.cash += SALARY;
+    say('<b>' + p.name + '</b> passed Start and collected ' + money(SALARY) + '.');
+  }
+  renderAll();
+  landOn(p);
+}
+
+function landOn(p) {
+  const idx = p.at;
+  const tile = TILES[idx];
+  const owner = game.owners[idx];
+
+  switch (tile.type) {
+    case 'go':
+      say('<b>' + p.name + '</b> landed on Start.');
+      return finishTurn();
+
+    case 'jail':
+      say('<b>' + p.name + '</b> is just visiting the Jail.');
+      return finishTurn();
+
+    case 'rest':
+      say('<b>' + p.name + '</b> takes a break at the Rest Stop.');
+      return finishTurn();
+
+    case 'tojail':
+      p.at = 10;
+      say('<b>' + p.name + '</b> was sent to Jail.');
+      renderAll();
+      return finishTurn();
+
+    case 'tax':
+      say('<b>' + p.name + '</b> paid ' + money(tile.amount) + ' in ' + tile.name + '.');
+      pay(p, tile.amount, null);
+      return finishTurn();
+
+    case 'chance':
+    case 'chest':
+      // Cards arrive in stage 2; the spaces are inert until then.
+      say('<b>' + p.name + '</b> landed on ' + tile.name + '. Nothing happens yet.');
+      return finishTurn();
+
+    default: break;                 // prop, rail, util fall through
+  }
+
+  if (owner === -1) {
+    return offerPurchase(p, idx);
+  }
+  if (owner === game.turn) {
+    say('<b>' + p.name + '</b> is on their own ' + tile.name + '.');
+    return finishTurn();
+  }
+
+  const holder = game.players[owner];
+  const due = rentFor(idx, owner);
+  say('<b>' + p.name + '</b> pays ' + money(due) + ' rent to <b>' + holder.name + '</b> for ' + tile.name + '.');
+  pay(p, due, holder);
+  finishTurn();
+}
+
+// Rent doubles on a full colour group; rails and utilities scale with how many
+// of their kind the owner holds.
+function rentFor(idx, owner) {
+  const tile = TILES[idx];
+  if (tile.type === 'rail') {
+    const held = countType('rail', owner);
+    return 25 * Math.pow(2, held - 1);
+  }
+  if (tile.type === 'util') {
+    const held = countType('util', owner);
+    return held === 2 ? 100 : 50;
+  }
+  const group = TILES.filter(t => t.group === tile.group);
+  const ownsAll = group.every(t => game.owners[TILES.indexOf(t)] === owner);
+  return ownsAll ? tile.rent * 2 : tile.rent;
+}
+
+function countType(type, owner) {
+  return TILES.reduce((n, t, i) => n + (t.type === type && game.owners[i] === owner ? 1 : 0), 0);
+}
+
+function offerPurchase(p, idx) {
+  const tile = TILES[idx];
+  if (p.cash < tile.price) {
+    say('<b>' + p.name + '</b> cannot afford ' + tile.name + ' (' + money(tile.price) + ').');
+    return finishTurn();
+  }
+
+  if (isAi(p)) {
+    // Keep a cushion so a bad landing right after does not end the game.
+    const wants = p.cash - tile.price >= 250 || tile.type !== 'prop';
+    if (wants) buy(p, idx); else say('<b>' + p.name + '</b> passed on ' + tile.name + '.');
+    return finishTurn();
+  }
+
+  game.phase = 'decide';
+  note(tile.name + ' is unowned — ' + money(tile.price));
+  renderAll();
+}
+
+function buy(p, idx) {
+  const tile = TILES[idx];
+  p.cash -= tile.price;
+  game.owners[idx] = game.players.indexOf(p);
+  say('<b>' + p.name + '</b> bought ' + tile.name + ' for ' + money(tile.price) + '.');
+  renderAll();
+}
+
+function pay(p, amount, to) {
+  p.cash -= amount;
+  if (to) to.cash += amount;
+  if (p.cash < 0) bankrupt(p);
+  renderAll();
+}
+
+function bankrupt(p) {
+  p.out = true;
+  p.cash = 0;
+  // Stage 1 returns the holdings to the bank; transfers arrive with trading.
+  game.owners = game.owners.map(o => (o === game.players.indexOf(p) ? -1 : o));
+  say('<b>' + p.name + '</b> is bankrupt and out of the game.');
+}
+
+function finishTurn() {
+  renderAll();
+  const alive = activePlayers();
+  if (alive.length <= 1) {
+    game.phase = 'over';
+    const winner = alive[0];
+    bannerTitle.textContent = (winner ? winner.name : 'Nobody') + ' wins';
+    bannerText.textContent = winner ? 'Everyone else is bankrupt' : 'Everyone went bankrupt';
+    banner.hidden = false;
+    renderAll();
+    return;
+  }
+
+  const p = current();
+  if (!p.out && game.doubles > 0 && TILES[p.at].type !== 'tojail') {
+    game.phase = 'roll';
+    note('Doubles — roll again.');
+    renderAll();
+    return maybeAi();
+  }
+
+  game.phase = 'end';
+  renderAll();
+  if (isAi(p) || p.out) endTurn();
+}
+
+function endTurn() {
+  game.doubles = 0;
+  do {
+    game.turn = (game.turn + 1) % game.players.length;
+  } while (current().out);
+
+  game.phase = 'roll';
+  note('');
+  renderAll();
+  maybeAi();
+}
+
+function maybeAi() {
+  clearTimeout(game.aiTimer);
+  const p = current();
+  if (game.phase === 'over' || !isAi(p)) return;
+  game.aiTimer = setTimeout(() => {
+    if (game.phase === 'roll') roll();
+    else if (game.phase === 'end') endTurn();
+  }, 750);
+}
+
+// ---------------------------------------------------------------- render
+const boardEl = document.getElementById('board');
+const playersEl = document.getElementById('players');
+const logEl = document.getElementById('log');
+const rollBtn = document.getElementById('rollBtn');
+const buyBtn = document.getElementById('buyBtn');
+const passBtn = document.getElementById('passBtn');
+const endBtn = document.getElementById('endBtn');
+const newBtn = document.getElementById('newBtn');
+const playerCount = document.getElementById('playerCount');
+const opponents = document.getElementById('opponents');
+const banner = document.getElementById('banner');
+const bannerTitle = document.getElementById('bannerTitle');
+const bannerText = document.getElementById('bannerText');
+const bannerBtn = document.getElementById('bannerBtn');
+
+const tileEls = [];
+let turnName, turnNote, dieA, dieB;
+
+// Walk the ring: 0 sits bottom-right, then anticlockwise around the edge.
+function gridSpot(i) {
+  if (i <= 10) return { row: 11, col: 11 - i };
+  if (i <= 20) return { row: 21 - i, col: 1 };
+  if (i <= 30) return { row: 1, col: i - 19 };
+  return { row: i - 29, col: 11 };
+}
+
+function buildBoard() {
+  boardEl.innerHTML = '';
+  tileEls.length = 0;
+
+  TILES.forEach((tile, i) => {
+    const el = document.createElement('div');
+    const corner = i % 10 === 0;
+    el.className = 'tile' + (corner ? ' corner' : '') +
+      (['prop', 'rail', 'util'].includes(tile.type) ? '' : ' special');
+
+    const spot = gridSpot(i);
+    el.style.gridRow = spot.row;
+    el.style.gridColumn = spot.col;
+
+    if (tile.group) {
+      const bar = document.createElement('div');
+      bar.className = 'bar';
+      bar.style.background = COLORS[tile.group];
+      el.appendChild(bar);
+    } else if (tile.type === 'rail' || tile.type === 'util') {
+      const bar = document.createElement('div');
+      bar.className = 'bar';
+      bar.style.background = COLORS[tile.type];
+      el.appendChild(bar);
+    }
+
+    const nm = document.createElement('div');
+    nm.className = 'nm';
+    nm.textContent = tile.name;
+    el.appendChild(nm);
+
+    if (tile.price) {
+      const pr = document.createElement('div');
+      pr.className = 'pr';
+      pr.textContent = money(tile.price);
+      el.appendChild(pr);
+    } else if (tile.amount) {
+      const pr = document.createElement('div');
+      pr.className = 'pr';
+      pr.textContent = '-' + money(tile.amount);
+      el.appendChild(pr);
+    }
+
+    const tokens = document.createElement('div');
+    tokens.className = 'tokens';
+    el.appendChild(tokens);
+
+    boardEl.appendChild(el);
+    tileEls.push({ el, tokens });
+  });
+
+  const centre = document.createElement('div');
+  centre.id = 'centre';
+  centre.innerHTML =
+    '<h1>Business</h1>' +
+    '<div id="dice"><div class="die" id="dieA">–</div><div class="die" id="dieB">–</div></div>' +
+    '<div><div id="turnName"></div><div id="turnNote"></div></div>';
+  boardEl.appendChild(centre);
+
+  turnName = document.getElementById('turnName');
+  turnNote = document.getElementById('turnNote');
+  dieA = document.getElementById('dieA');
+  dieB = document.getElementById('dieB');
+}
+
+function renderAll() {
+  // tiles
+  tileEls.forEach((t, i) => {
+    const owner = game.owners[i];
+    t.el.classList.toggle('owned', owner !== -1);
+    if (owner !== -1) t.el.style.setProperty('--own', game.players[owner].color);
+    t.el.classList.toggle('here', game.players.some(p => !p.out && p.at === i));
+    t.tokens.innerHTML = '';
+  });
+
+  game.players.forEach(p => {
+    if (p.out) return;
+    const dot = document.createElement('div');
+    dot.className = 'token';
+    dot.style.background = p.color;
+    tileEls[p.at].tokens.appendChild(dot);
+  });
+
+  // player cards
+  playersEl.innerHTML = '';
+  game.players.forEach((p, i) => {
+    const row = document.createElement('div');
+    row.className = 'player' + (i === game.turn && game.phase !== 'over' ? ' active' : '') + (p.out ? ' out' : '');
+    const owned = game.owners.filter(o => o === i).length;
+    row.innerHTML =
+      '<span class="dot" style="background:' + p.color + '"></span>' +
+      '<span class="who">' + p.name +
+      '<span class="sub">' + (p.out ? 'bankrupt' : owned + ' deed' + (owned === 1 ? '' : 's') + ' · ' + TILES[p.at].name) + '</span></span>' +
+      '<span class="cash">' + money(p.cash) + '</span>';
+    playersEl.appendChild(row);
+  });
+
+  // controls
+  const p = current();
+  const human = p && !isAi(p) && !p.out && game.phase !== 'over';
+  rollBtn.disabled = !(human && game.phase === 'roll');
+  endBtn.disabled = !(human && game.phase === 'end');
+  const deciding = human && game.phase === 'decide';
+  buyBtn.disabled = !deciding;
+  passBtn.disabled = !deciding;
+
+  if (turnName) {
+    turnName.textContent = game.phase === 'over' ? 'Game over' : p.name + "'s turn";
+    turnName.style.color = game.phase === 'over' ? '#86c2a5' : p.color;
+  }
+}
+
+function note(text) { if (turnNote) turnNote.textContent = text; }
+
+function showDice(a, b) {
+  dieA.textContent = a;
+  dieB.textContent = b;
+  dieA.classList.remove('rolling');
+  dieB.classList.remove('rolling');
+  void dieA.offsetWidth;                    // restart the animation
+  dieA.classList.add('rolling');
+  dieB.classList.add('rolling');
+}
+
+function say(html) {
+  const line = document.createElement('div');
+  line.innerHTML = html;
+  logEl.prepend(line);
+  while (logEl.childElementCount > 40) logEl.lastElementChild.remove();
+}
+
+// ---------------------------------------------------------------- events
+rollBtn.addEventListener('click', roll);
+endBtn.addEventListener('click', endTurn);
+buyBtn.addEventListener('click', () => {
+  if (game.phase !== 'decide') return;
+  buy(current(), current().at);
+  note('');
+  finishTurn();
+});
+passBtn.addEventListener('click', () => {
+  if (game.phase !== 'decide') return;
+  say('<b>' + current().name + '</b> passed on ' + TILES[current().at].name + '.');
+  note('');
+  finishTurn();
+});
+newBtn.addEventListener('click', newGame);
+bannerBtn.addEventListener('click', newGame);
+
+document.addEventListener('keydown', e => {
+  if (e.target.tagName === 'SELECT') return;
+  if (e.code !== 'Space' && e.code !== 'Enter') return;
+  e.preventDefault();
+  if (!rollBtn.disabled) roll();
+  else if (!endBtn.disabled) endTurn();
+});
+
+buildBoard();
+newGame();
+</script>
+</body>
+</html>

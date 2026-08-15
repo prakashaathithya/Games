@@ -10,6 +10,7 @@ Live at **https://games-dice.vercel.app**.
 | --- | --- | --- |
 | [3D Dice Roller](Dice/) | `/Dice` | Physics-driven dice, d4 through d20, with custom colours and an orbit camera. |
 | [Sling Puck](SlingPuck/) | `/SlingPuck` | The wooden sling puck board: clear your half through the centre gap before your opponent does. |
+| [Business Board](Business/) | `/Business` | Property trading for two to four players. Core loop in place; cards, houses and trading still to come. |
 
 The root `index.html` is the menu that links to them.
 
