@@ -9,7 +9,7 @@ Live at **https://games-dice.vercel.app**.
 | Game | Path | Description |
 | --- | --- | --- |
 | [3D Dice Roller](Dice/) | `/Dice` | Physics-driven dice, d4 through d20, with custom colours and an orbit camera. |
-| [Sling Air Hockey](AirHockey/) | `/AirHockey` | Slingshot air hockey against the computer or a second player on the same screen. |
+| [Sling Puck](SlingPuck/) | `/SlingPuck` | The wooden sling puck board: clear your half through the centre gap before your opponent does. |
 
 The root `index.html` is the menu that links to them.
 

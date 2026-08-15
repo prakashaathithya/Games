@@ -1,0 +1,842 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no, maximum-scale=1">
+<title>Sling Puck</title>
+<style>
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0; height: 100%; overflow: hidden;
+    overscroll-behavior: none;
+    background: #14100b;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    color: #f0e9dd;
+    -webkit-tap-highlight-color: transparent;
+    -webkit-user-select: none; user-select: none;
+  }
+  canvas { display: block; touch-action: none; }
+
+  #gear {
+    position: fixed; z-index: 12;
+    top: max(12px, env(safe-area-inset-top)); left: 12px;
+    width: 44px; height: 44px;
+    display: grid; place-items: center;
+    font-size: 19px; line-height: 1; color: #e2d8c8;
+    background: rgba(28, 22, 15, 0.78);
+    border: 1px solid rgba(255,255,255,0.14);
+    border-radius: 13px; backdrop-filter: blur(10px); cursor: pointer;
+  }
+  #gear[aria-expanded="true"] { background: rgba(70, 55, 38, 0.92); }
+
+  #panel {
+    position: fixed; z-index: 11;
+    top: calc(max(12px, env(safe-area-inset-top)) + 54px); left: 12px;
+    width: min(320px, calc(100vw - 24px));
+    display: grid; grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px 14px; padding: 14px 16px;
+    background: rgba(28, 22, 15, 0.9);
+    border: 1px solid rgba(255,255,255,0.11);
+    border-radius: 16px;
+    box-shadow: 0 18px 40px rgba(0,0,0,0.5);
+    backdrop-filter: blur(14px);
+    transform-origin: top left;
+    transition: opacity .16s ease, transform .16s ease;
+  }
+  #panel[hidden] { display: grid; opacity: 0; pointer-events: none; transform: scale(0.96) translateY(-6px); }
+  #panel label {
+    display: flex; flex-direction: column; gap: 7px; min-width: 0;
+    font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase; color: #a99b86;
+  }
+  #panel select {
+    font: inherit; font-size: 15px; width: 100%;
+    color: #f0e9dd; background: #33291d;
+    border: 1px solid rgba(255,255,255,0.13);
+    border-radius: 9px; padding: 8px 9px; min-height: 40px; outline: none;
+  }
+  #panel select:focus { border-color: #d8a24a; }
+  #panel .wide { grid-column: 1 / -1; }
+  #panel button {
+    font: inherit; font-size: 14px; font-weight: 600; width: 100%;
+    color: #1d1710; background: #d8a24a;
+    border: none; border-radius: 9px; padding: 11px; min-height: 42px; cursor: pointer;
+  }
+
+  .hud {
+    position: fixed; left: 0; right: 0; z-index: 10;
+    display: flex; justify-content: center; gap: 10px; align-items: baseline;
+    pointer-events: none; font-variant-numeric: tabular-nums;
+  }
+  #topHud { top: max(14px, env(safe-area-inset-top)); transform: rotate(180deg); }
+  #bottomHud { bottom: max(14px, env(safe-area-inset-bottom)); }
+  .hud .pts {
+    font-size: 30px; font-weight: 700; line-height: 1;
+    text-shadow: 0 2px 14px rgba(0,0,0,0.85);
+  }
+  .hud .name {
+    font-size: 11px; letter-spacing: 0.16em; text-transform: uppercase;
+    color: #a2957f; text-shadow: 0 1px 8px rgba(0,0,0,0.85);
+  }
+
+  #banner {
+    position: fixed; inset: 0; z-index: 13;
+    display: grid; place-items: center;
+    background: rgba(14, 11, 7, 0.78);
+    backdrop-filter: blur(6px); text-align: center; padding: 24px;
+  }
+  #banner[hidden] { display: none; }
+  #banner h1 { margin: 0 0 6px; font-size: clamp(26px, 7vw, 42px); font-weight: 700; }
+  #banner p { margin: 0 0 22px; color: #a99b86; font-size: 14px; }
+  #banner button {
+    font: inherit; font-size: 15px; font-weight: 600;
+    color: #1d1710; background: #d8a24a;
+    border: none; border-radius: 11px; padding: 13px 26px; min-height: 46px; cursor: pointer;
+  }
+
+  #hint {
+    position: fixed; left: 0; right: 0; z-index: 10;
+    bottom: calc(max(14px, env(safe-area-inset-bottom)) + 54px);
+    text-align: center; pointer-events: none;
+    font-size: 11px; letter-spacing: 0.13em; text-transform: uppercase;
+    color: #8b7f6c; text-shadow: 0 1px 8px rgba(0,0,0,0.85); padding: 0 16px;
+  }
+</style>
+</head>
+<body>
+
+<button id="gear" aria-expanded="false" aria-controls="panel" aria-label="Settings">&#9881;</button>
+
+<div id="panel" hidden>
+  <label>Mode
+    <select id="mode">
+      <option value="ai" selected>vs Computer</option>
+      <option value="local">2 players</option>
+    </select>
+  </label>
+  <label>Difficulty
+    <select id="difficulty">
+      <option value="easy">Easy</option>
+      <option value="normal" selected>Normal</option>
+      <option value="hard">Hard</option>
+    </select>
+  </label>
+  <label>Pucks each
+    <select id="perSide">
+      <option value="3">3</option>
+      <option value="5" selected>5</option>
+      <option value="7">7</option>
+    </select>
+  </label>
+  <label>Board
+    <select id="boardStyle">
+      <option value="pine" selected>Pine</option>
+      <option value="walnut">Walnut</option>
+      <option value="slate">Slate</option>
+    </select>
+  </label>
+  <div class="wide"><button id="restart" type="button">New game</button></div>
+</div>
+
+<div class="hud" id="topHud"><span class="pts">5</span><span class="name">left</span></div>
+<div class="hud" id="bottomHud"><span class="pts">5</span><span class="name">left</span></div>
+<div id="hint">Drag a puck back, release to sling it through the gap</div>
+
+<div id="banner" hidden>
+  <div>
+    <h1 id="bannerTitle">You win</h1>
+    <p id="bannerText">Side cleared</p>
+    <button id="bannerButton" type="button">Play again</button>
+  </div>
+</div>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://unpkg.com/three@0.169.0/build/three.module.js"
+  }
+}
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+
+// ---------------------------------------------------------------- constants
+// Pucks slide on a flat board, so the simulation is 2D and hand-written:
+// circle/circle and circle/wall responses are exact and cheap at this count.
+const PUCK_R = 0.62;
+const PUCK_H = 0.30;
+const RAIL_T = 0.55;
+const RAIL_H = 0.85;
+const DIV_T = 0.34;          // centre divider thickness
+const POST_R = DIV_T * 0.6;  // rounded ends of the divider, as collision posts
+
+const MAX_PULL = 3.4;        // how far a puck can be drawn back
+const MAX_SPEED = 40;
+const MIN_SPEED = 7;
+const DRAG_K = 1.35;         // exponential velocity decay per second
+const WALL_REST = 0.62;      // wood absorbs a lot
+const PUCK_REST = 0.9;
+const STOP_SPEED = 0.7;
+
+const AI_GAP = { easy: [1.7, 2.6], normal: [1.0, 1.7], hard: [0.55, 1.0] };
+const AI_ERROR = { easy: 0.26, normal: 0.13, hard: 0.05 };
+const AI_POWER = { easy: [0.45, 0.75], normal: [0.6, 0.9], hard: [0.75, 1.0] };
+
+const THEMES = {
+  pine:   { board: 0xc99f6a, rail: 0xdcb787, mark: 0x3a2a17, bg: 0x14100b },
+  walnut: { board: 0x8a5a34, rail: 0x6f4526, mark: 0x2a1a0e, bg: 0x110c08 },
+  slate:  { board: 0x59606b, rail: 0x8d959f, mark: 0x232830, bg: 0x0f1115 },
+};
+
+const clamp = THREE.MathUtils.clamp;
+const isTouch = matchMedia('(pointer: coarse)').matches;
+
+let halfW = 6, halfL = 9, gapHalf = 1.9;
+
+// ---------------------------------------------------------------- renderer
+const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, isTouch ? 1.75 : 2));
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+document.body.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(40, window.innerWidth / window.innerHeight, 0.1, 200);
+
+scene.add(new THREE.HemisphereLight(0xe8d8c0, 0x241c14, 0.85));
+const key = new THREE.DirectionalLight(0xfff2df, 1.4);
+key.position.set(5, 20, 8);
+key.castShadow = true;
+key.shadow.mapSize.set(isTouch ? 1024 : 2048, isTouch ? 1024 : 2048);
+key.shadow.camera.near = 2;
+key.shadow.camera.far = 60;
+key.shadow.bias = -0.0009;
+scene.add(key);
+
+let theme = THEMES.pine;
+
+// ---------------------------------------------------------------- board
+const board = new THREE.Group();
+scene.add(board);
+
+const boardMat = new THREE.MeshStandardMaterial({ color: theme.board, roughness: 0.85, metalness: 0.02 });
+const railMat = new THREE.MeshStandardMaterial({ color: theme.rail, roughness: 0.7, metalness: 0.03 });
+const markMat = new THREE.MeshBasicMaterial({ color: theme.mark, transparent: true, opacity: 0.5 });
+const bandMat = new THREE.MeshStandardMaterial({ color: 0x24211d, roughness: 0.55 });
+
+function buildBoard() {
+  for (const child of [...board.children]) {
+    board.remove(child);
+    if (child.geometry) child.geometry.dispose();
+  }
+
+  const deck = new THREE.Mesh(new THREE.PlaneGeometry(halfW * 2, halfL * 2), boardMat);
+  deck.rotation.x = -Math.PI / 2;
+  deck.receiveShadow = true;
+  board.add(deck);
+
+  const addBox = (mat, w, h, l, x, y, z) => {
+    const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, l), mat);
+    m.position.set(x, y, z);
+    m.castShadow = true;
+    m.receiveShadow = true;
+    board.add(m);
+    return m;
+  };
+
+  const sideLen = halfL * 2 + RAIL_T * 2;
+  addBox(railMat, RAIL_T, RAIL_H, sideLen, -(halfW + RAIL_T / 2), RAIL_H / 2, 0);
+  addBox(railMat, RAIL_T, RAIL_H, sideLen, halfW + RAIL_T / 2, RAIL_H / 2, 0);
+  addBox(railMat, halfW * 2 + RAIL_T * 2, RAIL_H, RAIL_T, 0, RAIL_H / 2, -(halfL + RAIL_T / 2));
+  addBox(railMat, halfW * 2 + RAIL_T * 2, RAIL_H, RAIL_T, 0, RAIL_H / 2, halfL + RAIL_T / 2);
+
+  // Centre divider: two walls with one gap between them.
+  const wall = halfW - gapHalf;
+  addBox(railMat, wall, RAIL_H * 0.82, DIV_T, -(gapHalf + wall / 2), RAIL_H * 0.41, 0);
+  addBox(railMat, wall, RAIL_H * 0.82, DIV_T, gapHalf + wall / 2, RAIL_H * 0.41, 0);
+
+  for (const sx of [-1, 1]) {
+    const post = new THREE.Mesh(
+      new THREE.CylinderGeometry(POST_R, POST_R, RAIL_H * 0.82, 20), railMat
+    );
+    post.position.set(sx * gapHalf, RAIL_H * 0.41, 0);
+    post.castShadow = true;
+    board.add(post);
+  }
+
+  // Painted markings: a lane stripe pattern per half, like the wooden board.
+  for (const sz of [-1, 1]) {
+    for (let i = 0; i < 3; i++) {
+      const y = sz * (halfL * (0.3 + i * 0.2));
+      const stripe = new THREE.Mesh(new THREE.PlaneGeometry(halfW * (1.25 - i * 0.22), 0.1), markMat);
+      stripe.rotation.x = -Math.PI / 2;
+      stripe.position.set(0, 0.012, y);
+      board.add(stripe);
+    }
+    const ring = new THREE.Mesh(new THREE.RingGeometry(halfW * 0.2, halfW * 0.2 + 0.09, 40), markMat);
+    ring.rotation.x = -Math.PI / 2;
+    ring.position.set(0, 0.012, sz * halfL * 0.52);
+    board.add(ring);
+
+    // The elastic band each player shoots against, at the back of their half.
+    const bandZ = sz * (halfL - 0.9);
+    addBox(bandMat, halfW * 1.55, 0.13, 0.12, 0, 0.09, bandZ);
+  }
+
+  const reach = Math.max(halfW, halfL) + 3;
+  key.shadow.camera.left = -reach;
+  key.shadow.camera.right = reach;
+  key.shadow.camera.top = reach;
+  key.shadow.camera.bottom = -reach;
+  key.shadow.camera.updateProjectionMatrix();
+}
+
+// ---------------------------------------------------------------- pucks
+const puckGeo = new THREE.CylinderGeometry(PUCK_R, PUCK_R, PUCK_H, 36);
+const puckMats = [
+  new THREE.MeshStandardMaterial({ color: 0x1c1c1f, roughness: 0.35, metalness: 0.15 }),
+  new THREE.MeshStandardMaterial({ color: 0xf2efe8, roughness: 0.35, metalness: 0.08 }),
+];
+
+const pucks = [];
+
+function spawnPucks(perSide) {
+  for (const p of pucks) scene.remove(p.mesh);
+  pucks.length = 0;
+
+  for (const sz of [1, -1]) {
+    for (let i = 0; i < perSide; i++) {
+      const row = i % 2;
+      const inRow = Math.floor(i / 2);
+      const cols = Math.ceil(perSide / 2);
+      const spread = (halfW * 1.35) / Math.max(1, cols);
+      const x = (inRow - (cols - 1) / 2) * spread + (row ? spread / 2 : 0);
+      const z = sz * (halfL * (row ? 0.42 : 0.62));
+
+      const mesh = new THREE.Mesh(puckGeo, puckMats[(i + (sz > 0 ? 0 : 1)) % 2]);
+      mesh.castShadow = true;
+      mesh.receiveShadow = true;
+      scene.add(mesh);
+
+      pucks.push({
+        mesh,
+        pos: new THREE.Vector2(clamp(x, -(halfW - PUCK_R), halfW - PUCK_R), z),
+        vel: new THREE.Vector2(0, 0),
+        held: false,
+      });
+    }
+  }
+}
+
+// ---------------------------------------------------------------- aim guide
+const aims = new Map();   // pointerId -> { bar, head }
+
+function makeAim() {
+  const bar = new THREE.Mesh(
+    new THREE.PlaneGeometry(1, 0.16),
+    new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.8 })
+  );
+  bar.rotation.x = -Math.PI / 2;
+  const head = new THREE.Mesh(
+    new THREE.ConeGeometry(0.32, 0.68, 3),
+    new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.9 })
+  );
+  head.rotation.x = -Math.PI / 2;
+  scene.add(bar, head);
+  return { bar, head };
+}
+
+function drawAim(id, from, dirX, dirZ, power) {
+  let a = aims.get(id);
+  if (!a) { a = makeAim(); aims.set(id, a); }
+  const len = 1.2 + power * 4.4;
+  const angle = Math.atan2(dirX, dirZ);
+
+  a.bar.visible = a.head.visible = power > 0.03;
+  a.bar.scale.set(len, 1, 1);
+  a.bar.position.set(from.x + dirX * len / 2, 0.06, from.y + dirZ * len / 2);
+  a.bar.rotation.z = angle - Math.PI / 2;
+  a.head.position.set(from.x + dirX * (len + 0.28), 0.06, from.y + dirZ * (len + 0.28));
+  a.head.rotation.z = angle + Math.PI;
+
+  const hot = new THREE.Color().setHSL(0.34 - power * 0.34, 0.7, 0.6);
+  a.bar.material.color.copy(hot);
+  a.head.material.color.copy(hot);
+}
+
+function clearAim(id) {
+  const a = aims.get(id);
+  if (!a) return;
+  scene.remove(a.bar, a.head);
+  a.bar.geometry.dispose();
+  a.head.geometry.dispose();
+  aims.delete(id);
+}
+
+// ---------------------------------------------------------------- state
+const state = {
+  mode: 'ai',
+  difficulty: 'normal',
+  perSide: 5,
+  running: false,
+  aiTimer: 0,
+};
+
+function sideOf(p) { return p.pos.y >= 0 ? 0 : 1; }   // 0 = bottom/near, 1 = top/far
+function countSide(side) { return pucks.filter(p => sideOf(p) === side).length; }
+const anyMoving = () => pucks.some(p => !p.held && p.vel.lengthSq() > STOP_SPEED * STOP_SPEED);
+
+function newGame() {
+  spawnPucks(state.perSide);
+  state.running = true;
+  state.aiTimer = rand(...AI_GAP[state.difficulty]);
+  banner.hidden = true;
+  updateHud();
+}
+
+function checkWin() {
+  if (!state.running || anyMoving()) return;
+  const bottom = countSide(0), top = countSide(1);
+  if (bottom > 0 && top > 0) return;
+
+  state.running = false;
+  const bottomWins = bottom === 0;
+  const other = state.mode === 'ai' ? 'Computer' : 'Player 2';
+  bannerTitle.textContent = bottomWins
+    ? (state.mode === 'ai' ? 'You win' : 'Player 1 wins')
+    : other + ' wins';
+  bannerText.textContent = bottomWins
+    ? 'Side cleared with ' + top + ' left on the other side'
+    : 'You still had ' + bottom + ' to clear';
+  banner.hidden = false;
+  winSound(bottomWins);
+  vibrate([20, 60, 30]);
+}
+
+// ---------------------------------------------------------------- physics
+function stepPucks(dt) {
+  let maxSpeed = 0;
+  for (const p of pucks) if (!p.held) maxSpeed = Math.max(maxSpeed, p.vel.length());
+  const steps = clamp(Math.ceil((maxSpeed * dt) / (PUCK_R * 0.55)), 1, 8);
+  const h = dt / steps;
+
+  for (let s = 0; s < steps; s++) {
+    for (const p of pucks) {
+      if (p.held) continue;
+      p.pos.x += p.vel.x * h;
+      p.pos.y += p.vel.y * h;
+      collideBounds(p);
+    }
+    collidePucks();
+  }
+
+  const decay = Math.exp(-DRAG_K * dt);
+  for (const p of pucks) {
+    if (p.held) continue;
+    p.vel.multiplyScalar(decay);
+    if (p.vel.lengthSq() < STOP_SPEED * STOP_SPEED * 0.25) p.vel.set(0, 0);
+  }
+}
+
+function collideBounds(p) {
+  const limX = halfW - PUCK_R, limZ = halfL - PUCK_R;
+
+  if (p.pos.x < -limX) { p.pos.x = -limX; p.vel.x = Math.abs(p.vel.x) * WALL_REST; thud(p); }
+  else if (p.pos.x > limX) { p.pos.x = limX; p.vel.x = -Math.abs(p.vel.x) * WALL_REST; thud(p); }
+  if (p.pos.y < -limZ) { p.pos.y = -limZ; p.vel.y = Math.abs(p.vel.y) * WALL_REST; thud(p); }
+  else if (p.pos.y > limZ) { p.pos.y = limZ; p.vel.y = -Math.abs(p.vel.y) * WALL_REST; thud(p); }
+
+  // Divider: solid either side of the gap, with rounded posts at the opening.
+  const face = DIV_T / 2 + PUCK_R;
+  if (Math.abs(p.pos.x) > gapHalf && Math.abs(p.pos.y) < face) {
+    const side = p.pos.y === 0 ? -Math.sign(p.vel.y || 1) : Math.sign(p.pos.y);
+    p.pos.y = side * face;
+    p.vel.y = Math.abs(p.vel.y) * WALL_REST * side;
+    thud(p);
+  }
+
+  for (const sx of [-1, 1]) {
+    const dx = p.pos.x - sx * gapHalf, dz = p.pos.y;
+    const dist = Math.hypot(dx, dz);
+    const min = POST_R + PUCK_R;
+    if (dist < min && dist > 0.0001) {
+      const nx = dx / dist, nz = dz / dist;
+      p.pos.x = sx * gapHalf + nx * min;
+      p.pos.y = nz * min;
+      const vn = p.vel.x * nx + p.vel.y * nz;
+      if (vn < 0) {
+        p.vel.x -= (1 + WALL_REST) * vn * nx;
+        p.vel.y -= (1 + WALL_REST) * vn * nz;
+        thud(p);
+      }
+    }
+  }
+}
+
+function collidePucks() {
+  const min = PUCK_R * 2;
+  for (let i = 0; i < pucks.length; i++) {
+    for (let j = i + 1; j < pucks.length; j++) {
+      const a = pucks[i], b = pucks[j];
+      const dx = b.pos.x - a.pos.x, dz = b.pos.y - a.pos.y;
+      const dist = Math.hypot(dx, dz);
+      if (dist >= min || dist < 0.0001) continue;
+
+      const nx = dx / dist, nz = dz / dist;
+      const overlap = min - dist;
+
+      // A held puck is pinned by the finger, so the free one absorbs the push.
+      if (a.held && b.held) continue;
+      if (a.held) { b.pos.x += nx * overlap; b.pos.y += nz * overlap; }
+      else if (b.held) { a.pos.x -= nx * overlap; a.pos.y -= nz * overlap; }
+      else {
+        a.pos.x -= nx * overlap / 2; a.pos.y -= nz * overlap / 2;
+        b.pos.x += nx * overlap / 2; b.pos.y += nz * overlap / 2;
+      }
+
+      const rvn = (b.vel.x - a.vel.x) * nx + (b.vel.y - a.vel.y) * nz;
+      if (rvn > 0) continue;                       // already separating
+
+      if (a.held || b.held) {
+        // A pinned puck acts like a wall: the free one simply bounces off it.
+        const free = a.held ? b : a;
+        const vn = free.vel.x * nx + free.vel.y * nz;
+        free.vel.x -= (1 + PUCK_REST) * vn * nx;
+        free.vel.y -= (1 + PUCK_REST) * vn * nz;
+      } else {
+        const imp = (1 + PUCK_REST) * rvn / 2;     // equal masses
+        a.vel.x += imp * nx; a.vel.y += imp * nz;
+        b.vel.x -= imp * nx; b.vel.y -= imp * nz;
+      }
+      clack(Math.abs(rvn));
+    }
+  }
+}
+
+// ---------------------------------------------------------------- input
+const raycaster = new THREE.Raycaster();
+const groundPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+const ndc = new THREE.Vector2();
+const hitPoint = new THREE.Vector3();
+const grips = new Map();   // pointerId -> { puck, anchor: Vector2 }
+
+function toBoard(e) {
+  ndc.x = (e.clientX / window.innerWidth) * 2 - 1;
+  ndc.y = -(e.clientY / window.innerHeight) * 2 + 1;
+  raycaster.setFromCamera(ndc, camera);
+  return raycaster.ray.intersectPlane(groundPlane, hitPoint) ? hitPoint : null;
+}
+
+function canControl(side) {
+  return state.mode === 'local' ? true : side === 0;
+}
+
+function onPointerDown(e) {
+  if (!state.running) return;
+  const p = toBoard(e);
+  if (!p) return;
+
+  const side = p.z >= 0 ? 0 : 1;
+  if (!canControl(side)) return;
+
+  // Grab the nearest puck on that half, within reach of the finger.
+  let best = null, bestDist = PUCK_R * 2.6;
+  for (const puck of pucks) {
+    if (sideOf(puck) !== side || puck.held) continue;
+    const d = Math.hypot(puck.pos.x - p.x, puck.pos.y - p.z);
+    if (d < bestDist) { bestDist = d; best = puck; }
+  }
+  if (!best) return;
+
+  best.held = true;
+  best.vel.set(0, 0);
+  grips.set(e.pointerId, { puck: best, anchor: best.pos.clone() });
+  renderer.domElement.setPointerCapture?.(e.pointerId);
+  onPointerMove(e);
+}
+
+function onPointerMove(e) {
+  const grip = grips.get(e.pointerId);
+  if (!grip) return;
+  const p = toBoard(e);
+  if (!p) return;
+
+  // The puck follows the finger, limited by how far the band stretches.
+  let dx = p.x - grip.anchor.x, dz = p.z - grip.anchor.y;
+  const pull = Math.hypot(dx, dz);
+  if (pull > MAX_PULL) { dx = dx / pull * MAX_PULL; dz = dz / pull * MAX_PULL; }
+
+  // A drawn-back puck stays on its own half — the divider is not a hand rest.
+  const near = grip.anchor.y >= 0;
+  const minZ = near ? DIV_T / 2 + PUCK_R : -(halfL - PUCK_R);
+  const maxZ = near ? halfL - PUCK_R : -(DIV_T / 2 + PUCK_R);
+
+  grip.puck.pos.x = clamp(grip.anchor.x + dx, -(halfW - PUCK_R), halfW - PUCK_R);
+  grip.puck.pos.y = clamp(grip.anchor.y + dz, minZ, maxZ);
+
+  const back = Math.hypot(grip.puck.pos.x - grip.anchor.x, grip.puck.pos.y - grip.anchor.y);
+  const power = clamp(back / MAX_PULL, 0, 1);
+  if (back > 0.01) {
+    drawAim(e.pointerId, grip.puck.pos,
+      (grip.anchor.x - grip.puck.pos.x) / back,
+      (grip.anchor.y - grip.puck.pos.y) / back, power);
+  }
+}
+
+function onPointerUp(e) {
+  const grip = grips.get(e.pointerId);
+  if (!grip) return;
+  grips.delete(e.pointerId);
+  clearAim(e.pointerId);
+
+  const dx = grip.anchor.x - grip.puck.pos.x, dz = grip.anchor.y - grip.puck.pos.y;
+  const back = Math.hypot(dx, dz);
+  grip.puck.held = false;
+
+  if (back > 0.12) {
+    const power = clamp(back / MAX_PULL, 0, 1);
+    launch(grip.puck, dx / back, dz / back, power);
+  }
+}
+
+function launch(puck, dirX, dirZ, power) {
+  const speed = MIN_SPEED + (MAX_SPEED - MIN_SPEED) * power;
+  puck.vel.set(dirX * speed, dirZ * speed);
+  twang(power);
+  vibrate(12);
+}
+
+renderer.domElement.addEventListener('pointerdown', onPointerDown);
+renderer.domElement.addEventListener('pointermove', onPointerMove);
+renderer.domElement.addEventListener('pointerup', onPointerUp);
+renderer.domElement.addEventListener('pointercancel', onPointerUp);
+document.addEventListener('gesturestart', e => e.preventDefault());
+
+// ---------------------------------------------------------------- ai
+function aiTurn() {
+  const mine = pucks.filter(p => sideOf(p) === 1 && !p.held);
+  if (!mine.length) return;
+
+  // Prefer a puck with a clear straight run at the gap.
+  mine.sort((a, b) => Math.abs(a.pos.x) - Math.abs(b.pos.x));
+  const puck = mine[Math.floor(Math.random() * Math.min(2, mine.length))];
+
+  const targetX = clamp((Math.random() * 2 - 1) * gapHalf * 0.45, -gapHalf * 0.5, gapHalf * 0.5);
+  let angle = Math.atan2(targetX - puck.pos.x, 0 - puck.pos.y);
+  angle += (Math.random() * 2 - 1) * AI_ERROR[state.difficulty];
+
+  const [lo, hi] = AI_POWER[state.difficulty];
+  launch(puck, Math.sin(angle), Math.cos(angle), lo + Math.random() * (hi - lo));
+}
+
+// ---------------------------------------------------------------- sound
+let audio = null, noise = null, lastClack = 0, lastThud = 0;
+
+function initAudio() {
+  if (audio) return;
+  const Ctx = window.AudioContext || window.webkitAudioContext;
+  if (!Ctx) return;
+  audio = new Ctx();
+  const len = Math.floor(audio.sampleRate * 0.25);
+  noise = audio.createBuffer(1, len, audio.sampleRate);
+  const data = noise.getChannelData(0);
+  for (let i = 0; i < len; i++) data[i] = Math.random() * 2 - 1;
+}
+
+function burst(strength, freq, q, decay) {
+  if (!audio || audio.state !== 'running') return;
+  const src = audio.createBufferSource();
+  src.buffer = noise;
+  const band = audio.createBiquadFilter();
+  band.type = 'bandpass';
+  band.frequency.value = freq;
+  band.Q.value = q;
+  const gain = audio.createGain();
+  const t = audio.currentTime;
+  gain.gain.setValueAtTime(0.0001, t);
+  gain.gain.exponentialRampToValueAtTime(0.3 * strength + 0.008, t + 0.004);
+  gain.gain.exponentialRampToValueAtTime(0.0001, t + decay);
+  src.connect(band).connect(gain).connect(audio.destination);
+  src.start(t);
+  src.stop(t + decay + 0.03);
+}
+
+function clack(rel) {
+  const now = performance.now();
+  if (now - lastClack < 28) return;
+  lastClack = now;
+  burst(clamp(rel / MAX_SPEED, 0.12, 1), 1500 + Math.random() * 900, 2.4, 0.07);
+}
+
+function thud(p) {
+  const now = performance.now();
+  if (now - lastThud < 45) return;
+  lastThud = now;
+  burst(clamp(p.vel.length() / MAX_SPEED, 0.1, 0.8), 260 + Math.random() * 180, 1.4, 0.11);
+}
+
+function twang(power) {
+  if (!audio || audio.state !== 'running') return;
+  const t = audio.currentTime;
+  const osc = audio.createOscillator();
+  const gain = audio.createGain();
+  osc.type = 'sawtooth';
+  osc.frequency.setValueAtTime(180 + power * 120, t);
+  osc.frequency.exponentialRampToValueAtTime(70, t + 0.14);
+  gain.gain.setValueAtTime(0.0001, t);
+  gain.gain.exponentialRampToValueAtTime(0.1 + power * 0.1, t + 0.008);
+  gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.16);
+  osc.connect(gain).connect(audio.destination);
+  osc.start(t);
+  osc.stop(t + 0.2);
+}
+
+function winSound(good) {
+  if (!audio || audio.state !== 'running') return;
+  const t = audio.currentTime;
+  const notes = good ? [523.25, 659.25, 783.99, 1046.5] : [392, 329.6, 261.6];
+  notes.forEach((f, i) => {
+    const osc = audio.createOscillator();
+    const gain = audio.createGain();
+    osc.type = 'triangle';
+    osc.frequency.value = f;
+    gain.gain.setValueAtTime(0.0001, t + i * 0.08);
+    gain.gain.exponentialRampToValueAtTime(0.15, t + i * 0.08 + 0.02);
+    gain.gain.exponentialRampToValueAtTime(0.0001, t + i * 0.08 + 0.3);
+    osc.connect(gain).connect(audio.destination);
+    osc.start(t + i * 0.08);
+    osc.stop(t + i * 0.08 + 0.34);
+  });
+}
+
+function vibrate(pattern) {
+  if (navigator.vibrate) navigator.vibrate(pattern);
+}
+
+// ---------------------------------------------------------------- layout
+function layout() {
+  const aspect = window.innerWidth / window.innerHeight;
+  const ratio = clamp(1 / aspect * 1.05, 1.3, 1.9);
+  halfW = 6;
+  halfL = halfW * ratio;
+  gapHalf = halfW * 0.30;
+
+  buildBoard();
+
+  const halfV = Math.tan(THREE.MathUtils.degToRad(camera.fov) / 2);
+  const needW = (halfW + RAIL_T) * 1.08;
+  const needL = (halfL + RAIL_T) * 1.12;
+  const dist = Math.max(needW / (halfV * aspect), needL / halfV);
+
+  const tilt = 0.2;
+  camera.position.set(0, Math.cos(tilt) * dist, Math.sin(tilt) * dist);
+  camera.lookAt(0, 0, 0);
+}
+
+function applyTheme(name) {
+  theme = THEMES[name] || THEMES.pine;
+  boardMat.color.set(theme.board);
+  railMat.color.set(theme.rail);
+  markMat.color.set(theme.mark);
+  const bg = new THREE.Color(theme.bg);
+  scene.background = bg;
+  document.body.style.background = '#' + bg.getHexString();
+}
+
+const rand = (a, b) => a + Math.random() * (b - a);
+
+// ---------------------------------------------------------------- loop
+let last = performance.now();
+function animate() {
+  requestAnimationFrame(animate);
+  const now = performance.now();
+  const dt = Math.min((now - last) / 1000, 0.05);
+  last = now;
+
+  if (state.running) {
+    stepPucks(dt);
+
+    if (state.mode === 'ai') {
+      state.aiTimer -= dt;
+      if (state.aiTimer <= 0) {
+        aiTurn();
+        state.aiTimer = rand(...AI_GAP[state.difficulty]);
+      }
+    }
+
+    updateHud();
+    checkWin();
+  }
+
+  for (const p of pucks) {
+    p.mesh.position.set(p.pos.x, PUCK_H / 2 + (p.held ? 0.12 : 0), p.pos.y);
+  }
+
+  renderer.render(scene, camera);
+}
+
+// ---------------------------------------------------------------- ui
+const gear = document.getElementById('gear');
+const panel = document.getElementById('panel');
+const modeSel = document.getElementById('mode');
+const diffSel = document.getElementById('difficulty');
+const perSideSel = document.getElementById('perSide');
+const themeSel = document.getElementById('boardStyle');
+const restartBtn = document.getElementById('restart');
+const topHud = document.getElementById('topHud');
+const bottomHud = document.getElementById('bottomHud');
+const banner = document.getElementById('banner');
+const bannerTitle = document.getElementById('bannerTitle');
+const bannerText = document.getElementById('bannerText');
+const bannerButton = document.getElementById('bannerButton');
+const hint = document.getElementById('hint');
+
+function updateHud() {
+  bottomHud.querySelector('.pts').textContent = countSide(0);
+  topHud.querySelector('.pts').textContent = countSide(1);
+}
+
+function setPanelOpen(open) {
+  panel.hidden = !open;
+  gear.setAttribute('aria-expanded', String(open));
+}
+
+gear.addEventListener('click', () => setPanelOpen(panel.hidden));
+restartBtn.addEventListener('click', () => { newGame(); setPanelOpen(false); });
+bannerButton.addEventListener('click', newGame);
+
+modeSel.addEventListener('change', () => {
+  state.mode = modeSel.value;
+  hint.textContent = state.mode === 'local'
+    ? 'Both players sling at once — clear your own half first'
+    : 'Drag a puck back, release to sling it through the gap';
+  newGame();
+});
+diffSel.addEventListener('change', () => { state.difficulty = diffSel.value; });
+perSideSel.addEventListener('change', () => { state.perSide = parseInt(perSideSel.value, 10); newGame(); });
+themeSel.addEventListener('change', () => applyTheme(themeSel.value));
+
+window.addEventListener('pointerdown', initAudio, { once: true });
+window.addEventListener('pointerdown', () => {
+  if (audio && audio.state === 'suspended') audio.resume();
+});
+
+window.addEventListener('resize', () => {
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  layout();
+});
+
+state.mode = modeSel.value;
+state.difficulty = diffSel.value;
+state.perSide = parseInt(perSideSel.value, 10);
+setPanelOpen(false);
+applyTheme(themeSel.value);
+layout();
+newGame();
+animate();
+</script>
+</body>
+</html>
