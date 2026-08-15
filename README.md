@@ -1,35 +1,28 @@
-# 3D Dice Roller
+# Games
 
-A physics-driven 3D dice roller that runs in the browser. Single HTML file, no build step.
+A collection of small browser games and toys. Each one is a single self-contained page — no installs, no build step, no server.
 
-Open `index.html` directly, or visit the deployed site.
+Live at **https://games-dice.vercel.app**.
 
-## Features
+## Contents
 
-- **Real physics.** Dice are thrown with random velocity and spin, bounce off the table and walls, and the result is read from whichever face comes to rest pointing up. Nothing is decided in advance.
-- **Six die types.** d4, d6, d8, d10, d12 and d20, built as true polyhedral meshes. The d10 is a proper pentagonal trapezohedron.
-- **1–8 dice at once,** with each value listed and the total shown large.
-- **Face markings** as numbers or dots. Dots use the standard 3×3 pip layouts for values 1–9; higher values fall back to a numeral.
-- **Custom die colour,** with the ink colour flipping between dark and light automatically so every colour stays readable.
-- **Orbit camera.** Drag to swing around the table, pinch or scroll to zoom, tap to roll.
-- **Sound and haptics.** Impact noise is synthesised with the Web Audio API and scaled by collision speed; supported devices vibrate on throw and on settle.
-- **Mobile friendly,** with a full-width control bar, safe-area insets, and a camera that pulls back on portrait screens so the whole table fits.
+| Game | Path | Description |
+| --- | --- | --- |
+| [3D Dice Roller](Dice/) | `/Dice` | Physics-driven dice, d4 through d20, with custom colours and an orbit camera. |
 
-## Controls
+The root `index.html` is the menu that links to them.
 
-| Action | Input |
-| --- | --- |
-| Roll | Tap or click anywhere, or press Space / Enter |
-| Orbit | Drag |
-| Zoom | Pinch, or scroll wheel |
+## Running locally
 
-## Implementation notes
+Open `index.html` in a browser, or serve the folder:
 
-- Rendering is [three.js](https://threejs.org), physics is [cannon-es](https://pmndrs.github.io/cannon-es/), both loaded from a CDN through an import map.
-- Each die's collision hull is built from the exact triangles being rendered, so the visible mesh and the physics shape can never drift apart.
-- The triangle soup from each base geometry is grouped into flat faces by normal, so a dodecahedron's pentagons and a d10's kites each become a single numbered face with its own centred texture.
-- Opposite faces sum to *sides + 1*, matching a real die. The d4 has no antipodal faces, so it is numbered sequentially and read from the face lying down, as a physical d4 is.
-- If a die lands cocked — on an edge, or stacked on another die — it is nudged back into the air and allowed to settle again, up to a seven second cap.
+```sh
+npx serve .
+```
+
+## Deploying
+
+The repository is linked to Vercel. Pushing to `main` deploys to production; any other branch gets a preview URL. There is no build step — Vercel serves the files as they are.
 
 ## Licence
 
