@@ -14,6 +14,7 @@
     --ink: #e9ecf2;
     --muted: #8c96a5;
     --accent: #6fd39b;
+    --warn: #e6a15a;
     --board: #16332a;
     --tile: #f3efe4;
     --tile-ink: #23282f;
@@ -54,7 +55,10 @@
     font-size: clamp(5px, 0.95vh, 9px);
     line-height: 1.12;
   }
-  .tile .bar { height: 20%; min-height: 7px; margin: -3px -3px 2px; }
+  .tile .bar {
+    height: 20%; min-height: 7px; margin: -3px -3px 2px;
+    display: flex; align-items: center; justify-content: center; gap: 1px;
+  }
   .tile .nm { font-weight: 650; letter-spacing: -0.01em; word-break: break-word; }
   .tile .pr { margin-top: auto; color: #5d6570; font-variant-numeric: tabular-nums; }
   .tile.corner { background: #e7e1d2; align-items: center; justify-content: center; text-align: center; }
@@ -65,6 +69,14 @@
     border: 2px solid var(--own); pointer-events: none;
   }
   .tile.here { box-shadow: inset 0 0 0 2px #ffd479; }
+  .tile.mortgaged { background: #d9d2c2; }
+  .tile.mortgaged .nm { text-decoration: line-through; opacity: 0.65; }
+
+  .pip {
+    width: 4px; height: 4px; border-radius: 1px;
+    background: #1f3d29; box-shadow: 0 0 0 1px rgba(255,255,255,0.5);
+  }
+  .pip.hotel { width: 9px; height: 5px; background: #a3342c; }
 
   .tokens {
     position: absolute; right: 2px; bottom: 2px;
@@ -80,7 +92,7 @@
   #centre {
     grid-column: 2 / 11; grid-row: 2 / 11;
     background: var(--board);
-    display: grid; place-items: center; gap: 10px;
+    display: grid; place-items: center; gap: 8px;
     padding: 12px; text-align: center;
   }
   #centre h1 {
@@ -105,6 +117,13 @@
   }
   #turnName { font-size: clamp(11px, 1.9vh, 15px); font-weight: 650; }
   #turnNote { font-size: clamp(9px, 1.5vh, 12px); color: #7fae95; min-height: 1.2em; }
+  #card {
+    max-width: 78%; font-size: clamp(9px, 1.55vh, 12.5px); line-height: 1.35;
+    color: #f0e2bd; background: rgba(0,0,0,0.28);
+    border: 1px solid rgba(240,226,189,0.3); border-radius: 8px;
+    padding: 7px 10px;
+  }
+  #card[hidden] { display: none; }
 
   /* ---------------------------------------------------------- panel ---- */
   #panel {
@@ -112,11 +131,11 @@
     display: grid; gap: 12px;
     grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
   }
-  .card {
+  .card-box {
     background: var(--panel); border: 1px solid var(--line);
     border-radius: 14px; padding: 12px 14px;
   }
-  .card h2 {
+  .card-box h2 {
     margin: 0 0 9px; font-size: 10px; letter-spacing: 0.14em;
     text-transform: uppercase; color: var(--muted); font-weight: 650;
   }
@@ -148,12 +167,30 @@
   button.primary:hover:not(:disabled) { background: #86e0b0; }
   button:disabled { opacity: 0.4; cursor: default; }
 
+  #deeds { display: flex; flex-direction: column; gap: 6px; max-height: 210px; overflow-y: auto; }
+  .deed {
+    display: grid; grid-template-columns: 4px 1fr auto; gap: 8px; align-items: center;
+    background: var(--panel-2); border-radius: 9px; padding: 6px 8px 6px 0;
+    font-size: 12.5px;
+  }
+  .deed .swatch { width: 4px; height: 100%; min-height: 30px; border-radius: 9px 0 0 9px; }
+  .deed .info { min-width: 0; }
+  .deed .info b { display: block; font-weight: 600; }
+  .deed .info span { font-size: 10.5px; color: var(--muted); }
+  .deed .btns { display: flex; gap: 4px; }
+  .deed button {
+    flex: 0 0 auto; min-height: 30px; padding: 5px 9px;
+    font-size: 11.5px; font-weight: 600; border-radius: 7px;
+  }
+  #deedsEmpty { color: var(--muted); font-size: 12.5px; }
+
   #log {
     height: 132px; overflow-y: auto;
     display: flex; flex-direction: column-reverse; gap: 5px;
     font-size: 12.5px; line-height: 1.4; color: #b6bfcc;
   }
   #log b { color: var(--ink); }
+  #log .hl { color: var(--warn); }
 
   #setup { display: flex; gap: 10px; flex-wrap: wrap; }
   #setup label {
@@ -185,17 +222,19 @@
 <div id="board"></div>
 
 <div id="panel">
-  <div class="card">
+  <div class="card-box">
     <h2>Players</h2>
     <div id="players"></div>
   </div>
 
-  <div class="card">
+  <div class="card-box">
     <h2>Turn</h2>
     <div id="actions">
       <button id="rollBtn" class="primary" type="button">Roll</button>
       <button id="buyBtn" type="button" disabled>Buy</button>
       <button id="passBtn" type="button" disabled>Pass</button>
+      <button id="payBtn" type="button" disabled>Pay ₹50</button>
+      <button id="cardBtn" type="button" disabled>Use card</button>
       <button id="endBtn" type="button" disabled>End turn</button>
     </div>
     <div style="height:12px"></div>
@@ -203,7 +242,13 @@
     <div id="log"></div>
   </div>
 
-  <div class="card">
+  <div class="card-box">
+    <h2>Your deeds</h2>
+    <div id="deeds"></div>
+    <div id="deedsEmpty">Nothing owned yet.</div>
+  </div>
+
+  <div class="card-box">
     <h2>New game</h2>
     <div id="setup">
       <label>Players
@@ -235,8 +280,6 @@
 
 <script type="module">
 // ---------------------------------------------------------------- board data
-// A 40-space board. Property names are cities; the colour groups, prices and
-// rents are our own, tuned for a faster game than the classic table.
 const COLORS = {
   maroon: '#8d5340',
   sky:    '#8fc3e8',
@@ -249,6 +292,15 @@ const COLORS = {
   rail:   '#3b4350',
   util:   '#6d7684',
 };
+
+// What a house costs, by colour group. A hotel is the fifth house.
+const HOUSE_COST = {
+  maroon: 50, sky: 50, pink: 100, orange: 100,
+  red: 150, yellow: 150, green: 200, blue: 200,
+};
+
+// Rent multiplier against the base rent, indexed by houses (5 = hotel).
+const HOUSE_MULT = [1, 5, 15, 40, 60, 80];
 
 // type: go | prop | rail | util | tax | chance | chest | jail | rest | tojail
 const TILES = [
@@ -296,26 +348,82 @@ const TILES = [
 
 const START_CASH = 1500;
 const SALARY = 200;
+const JAIL = 10;
+const JAIL_FINE = 50;
 const PLAYER_COLORS = ['#e05a5a', '#4f9de0', '#e3b23c', '#63c98a'];
 const PLAYER_NAMES = ['Player 1', 'Player 2', 'Player 3', 'Player 4'];
 
 const money = n => '₹' + n.toLocaleString('en-IN');
 
+// ---------------------------------------------------------------- cards
+// Each card is text plus what it does. Anything that ends the turn early
+// calls through the same helpers the board itself uses.
+const CHANCE = [
+  { text: 'Advance to Start. Collect ' + money(SALARY) + '.', act: p => jumpTo(p, 0) },
+  { text: 'Take a trip to Mumbai.', act: p => jumpTo(p, 39) },
+  { text: 'Advance to Ernakulam.', act: p => jumpTo(p, 16) },
+  { text: 'Advance to Chandigarh.', act: p => jumpTo(p, 9) },
+  { text: 'Advance to North Rail.', act: p => jumpTo(p, 5) },
+  { text: 'Advance to the nearest railway. Rent there is doubled.', act: p => nearestRail(p) },
+  { text: 'Advance to the nearest railway. Rent there is doubled.', act: p => nearestRail(p) },
+  { text: 'Bank pays you a dividend of ' + money(50) + '.', act: p => earn(p, 50) },
+  { text: 'Your building loan matures. Collect ' + money(150) + '.', act: p => earn(p, 150) },
+  { text: 'You win a crossword competition. Collect ' + money(100) + '.', act: p => earn(p, 100) },
+  { text: 'Speeding fine. Pay ' + money(15) + '.', act: p => payBank(p, 15) },
+  { text: 'Pay for repairs: ' + money(25) + ' per house, ' + money(100) + ' per hotel.', act: p => repairs(p, 25, 100) },
+  { text: 'You have been elected chairman. Pay each player ' + money(50) + '.', act: p => payEach(p, 50) },
+  { text: 'Go back three spaces.', act: p => stepBack(p, 3) },
+  { text: 'Go directly to Jail. Do not pass Start.', act: p => sendToJail(p) },
+  { text: 'Get out of Jail free. Keep this card.', act: p => keepCard(p) },
+];
+
+const CHEST = [
+  { text: 'Advance to Start. Collect ' + money(SALARY) + '.', act: p => jumpTo(p, 0) },
+  { text: 'Bank error in your favour. Collect ' + money(200) + '.', act: p => earn(p, 200) },
+  { text: 'Your holiday fund matures. Collect ' + money(100) + '.', act: p => earn(p, 100) },
+  { text: 'Life insurance matures. Collect ' + money(100) + '.', act: p => earn(p, 100) },
+  { text: 'You inherit ' + money(100) + '.', act: p => earn(p, 100) },
+  { text: 'Sale of stock. Collect ' + money(50) + '.', act: p => earn(p, 50) },
+  { text: 'Consultancy fee. Collect ' + money(25) + '.', act: p => earn(p, 25) },
+  { text: 'Income tax refund. Collect ' + money(20) + '.', act: p => earn(p, 20) },
+  { text: 'You win second prize in a beauty contest. Collect ' + money(10) + '.', act: p => earn(p, 10) },
+  { text: "It is your birthday. Collect " + money(10) + ' from every player.', act: p => collectEach(p, 10) },
+  { text: "Doctor's fee. Pay " + money(50) + '.', act: p => payBank(p, 50) },
+  { text: 'School fees. Pay ' + money(50) + '.', act: p => payBank(p, 50) },
+  { text: 'Hospital fees. Pay ' + money(100) + '.', act: p => payBank(p, 100) },
+  { text: 'Street repairs: ' + money(40) + ' per house, ' + money(115) + ' per hotel.', act: p => repairs(p, 40, 115) },
+  { text: 'Go directly to Jail. Do not pass Start.', act: p => sendToJail(p) },
+  { text: 'Get out of Jail free. Keep this card.', act: p => keepCard(p) },
+];
+
 // ---------------------------------------------------------------- state
 const game = {
   players: [],
-  owners: new Array(40).fill(-1),   // tile index -> player index, -1 for open
+  owners: new Array(40).fill(-1),
+  houses: new Array(40).fill(0),
+  mortgaged: new Array(40).fill(false),
   turn: 0,
-  phase: 'roll',                    // roll | decide | end | over
+  phase: 'roll',       // roll | jail | decide | end | over
   doubles: 0,
+  decks: { chance: [], chest: [] },
   aiTimer: null,
 };
 
-function activePlayers() { return game.players.filter(p => !p.out); }
 const current = () => game.players[game.turn];
 const isAi = p => p.ai;
+const idxOf = p => game.players.indexOf(p);
+const activePlayers = () => game.players.filter(q => !q.out);
 
 // ---------------------------------------------------------------- setup
+function shuffled(deck) {
+  const out = deck.map((c, i) => i);
+  for (let i = out.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [out[i], out[j]] = [out[j], out[i]];
+  }
+  return out;
+}
+
 function newGame() {
   clearTimeout(game.aiTimer);
   const count = parseInt(playerCount.value, 10);
@@ -328,40 +436,239 @@ function newGame() {
     at: 0,
     out: false,
     ai: vsAi && i > 0,
+    inJail: false,
+    jailRolls: 0,
+    pardons: 0,
   }));
+
   game.owners = new Array(40).fill(-1);
+  game.houses = new Array(40).fill(0);
+  game.mortgaged = new Array(40).fill(false);
+  game.decks.chance = shuffled(CHANCE);
+  game.decks.chest = shuffled(CHEST);
   game.turn = 0;
   game.phase = 'roll';
   game.doubles = 0;
 
   logEl.innerHTML = '';
   banner.hidden = true;
+  cardEl.hidden = true;
   say('New game. ' + count + ' players, ' + money(START_CASH) + ' each.');
   renderAll();
   maybeAi();
 }
 
+// ---------------------------------------------------------------- movement
+function jumpTo(p, idx) {
+  if (idx <= p.at) { p.cash += SALARY; say('<b>' + p.name + '</b> passed Start, +' + money(SALARY) + '.'); }
+  p.at = idx;
+  renderAll();
+  landOn(p);
+}
+
+function stepBack(p, n) {
+  p.at = (p.at - n + 40) % 40;
+  renderAll();
+  landOn(p);
+}
+
+function nearestRail(p) {
+  const rails = [5, 15, 25, 35];
+  let target = rails.find(r => r > p.at);
+  if (target === undefined) { target = 5; p.cash += SALARY; say('<b>' + p.name + '</b> passed Start, +' + money(SALARY) + '.'); }
+  p.at = target;
+  renderAll();
+  landOn(p, 2);                       // doubled railway rent
+}
+
+function sendToJail(p) {
+  p.at = JAIL;
+  p.inJail = true;
+  p.jailRolls = 0;
+  game.doubles = 0;
+  say('<b>' + p.name + '</b> goes to Jail.');
+  renderAll();
+  finishTurn();
+}
+
+// ---------------------------------------------------------------- money
+function earn(p, amount) {
+  p.cash += amount;
+  say('<b>' + p.name + '</b> collects ' + money(amount) + '.');
+  settle();
+}
+
+function payBank(p, amount) {
+  charge(p, amount, null);
+  settle();
+}
+
+function payEach(p, amount) {
+  for (const q of activePlayers()) if (q !== p) charge(p, amount, q);
+  say('<b>' + p.name + '</b> paid every player ' + money(amount) + '.');
+  settle();
+}
+
+function collectEach(p, amount) {
+  for (const q of activePlayers()) if (q !== p) charge(q, amount, p);
+  say('<b>' + p.name + '</b> collected ' + money(amount) + ' from every player.');
+  settle();
+}
+
+function repairs(p, perHouse, perHotel) {
+  let houses = 0, hotels = 0;
+  game.houses.forEach((h, i) => {
+    if (game.owners[i] !== idxOf(p)) return;
+    if (h === 5) hotels++; else houses += h;
+  });
+  const bill = houses * perHouse + hotels * perHotel;
+  say('<b>' + p.name + '</b> owes ' + money(bill) + ' for ' + houses + ' house(s) and ' + hotels + ' hotel(s).');
+  charge(p, bill, null);
+  settle();
+}
+
+// The one place money leaves a player. Anyone short is made to raise funds by
+// selling houses and mortgaging deeds before bankruptcy is even considered.
+function charge(p, amount, to) {
+  if (amount <= 0) return;
+  if (p.cash < amount) raiseFunds(p, amount - p.cash);
+
+  const paid = Math.min(amount, Math.max(p.cash, 0));
+  p.cash -= amount;
+  if (to) to.cash += p.cash < 0 ? paid : amount;
+
+  if (p.cash < 0) bankrupt(p);
+}
+
+function raiseFunds(p, need) {
+  const mine = idxOf(p);
+  let raised = 0;
+
+  // Houses go first: they are worth half, and losing them costs no rent floor.
+  for (let round = 0; round < 5 && p.cash + raised < need; round++) {
+    for (let i = 0; i < 40 && p.cash + raised < need; i++) {
+      if (game.owners[i] !== mine || game.houses[i] === 0) continue;
+      game.houses[i]--;
+      raised += Math.floor(HOUSE_COST[TILES[i].group] / 2);
+    }
+  }
+
+  for (let i = 0; i < 40 && p.cash + raised < need; i++) {
+    if (game.owners[i] !== mine || game.mortgaged[i] || game.houses[i] > 0) continue;
+    game.mortgaged[i] = true;
+    raised += Math.floor(TILES[i].price / 2);
+  }
+
+  if (raised > 0) {
+    p.cash += raised;
+    say('<span class="hl"><b>' + p.name + '</b> raised ' + money(raised) + ' by selling and mortgaging.</span>');
+  }
+}
+
+function bankrupt(p) {
+  p.out = true;
+  p.cash = 0;
+  const mine = idxOf(p);
+  // Deeds return to the bank for now; passing them to the creditor is stage 3.
+  for (let i = 0; i < 40; i++) {
+    if (game.owners[i] !== mine) continue;
+    game.owners[i] = -1;
+    game.houses[i] = 0;
+    game.mortgaged[i] = false;
+  }
+  say('<span class="hl"><b>' + p.name + '</b> is bankrupt and out.</span>');
+}
+
+// ---------------------------------------------------------------- rent
+function ownsGroup(owner, group) {
+  return TILES.every((t, i) => t.group !== group || game.owners[i] === owner);
+}
+
+function countType(type, owner) {
+  return TILES.reduce((n, t, i) => n + (t.type === type && game.owners[i] === owner ? 1 : 0), 0);
+}
+
+function rentFor(idx, multiplier = 1) {
+  const tile = TILES[idx];
+  const owner = game.owners[idx];
+  if (game.mortgaged[idx]) return 0;
+
+  if (tile.type === 'rail') return 25 * Math.pow(2, countType('rail', owner) - 1) * multiplier;
+  if (tile.type === 'util') return (countType('util', owner) === 2 ? 100 : 50) * multiplier;
+
+  const h = game.houses[idx];
+  if (h > 0) return tile.rent * HOUSE_MULT[h];
+  return (ownsGroup(owner, tile.group) ? tile.rent * 2 : tile.rent) * multiplier;
+}
+
 // ---------------------------------------------------------------- turn flow
 function roll() {
-  if (game.phase !== 'roll') return;
+  if (game.phase !== 'roll' && game.phase !== 'jail') return;
   const a = 1 + Math.floor(Math.random() * 6);
   const b = 1 + Math.floor(Math.random() * 6);
   showDice(a, b);
-
   const p = current();
+
+  if (p.inJail) return jailRoll(p, a, b);
+
   const isDouble = a === b;
   game.doubles = isDouble ? game.doubles + 1 : 0;
 
   if (game.doubles === 3) {
-    say('<b>' + p.name + '</b> rolled three doubles and goes to Jail.');
-    p.at = 10;
-    game.doubles = 0;
-    finishTurn();
-    return;
+    say('<b>' + p.name + '</b> rolled three doubles in a row.');
+    return sendToJail(p);
   }
 
   say('<b>' + p.name + '</b> rolled ' + a + ' + ' + b + ' = ' + (a + b) + (isDouble ? ' (double)' : ''));
   advance(p, a + b);
+}
+
+function jailRoll(p, a, b) {
+  if (a === b) {
+    p.inJail = false;
+    p.jailRolls = 0;
+    say('<b>' + p.name + '</b> rolled a double and leaves Jail.');
+    game.doubles = 0;                 // a jailbreak double does not earn another turn
+    return advance(p, a + b);
+  }
+
+  p.jailRolls++;
+  if (p.jailRolls >= 3) {
+    say('<b>' + p.name + '</b> failed three times and pays the ' + money(JAIL_FINE) + ' fine.');
+    charge(p, JAIL_FINE, null);
+    p.inJail = false;
+    p.jailRolls = 0;
+    if (p.out) return finishTurn();
+    return advance(p, a + b);
+  }
+
+  say('<b>' + p.name + '</b> rolled ' + a + ' + ' + b + ' and stays in Jail (' + p.jailRolls + ' of 3).');
+  finishTurn();
+}
+
+function payFine(p) {
+  charge(p, JAIL_FINE, null);
+  p.inJail = false;
+  p.jailRolls = 0;
+  say('<b>' + p.name + '</b> paid the ' + money(JAIL_FINE) + ' fine.');
+  game.phase = 'roll';
+  renderAll();
+  maybeAi();
+}
+
+function usePardon(p) {
+  p.pardons--;
+  p.inJail = false;
+  p.jailRolls = 0;
+  say('<b>' + p.name + '</b> used a get out of Jail free card.');
+  game.phase = 'roll';
+  renderAll();
+  maybeAi();
+}
+
+function keepCard(p) {
+  p.pardons++;
+  settle();
 }
 
 function advance(p, steps) {
@@ -369,95 +676,75 @@ function advance(p, steps) {
   p.at = (p.at + steps) % 40;
   if (p.at < from) {
     p.cash += SALARY;
-    say('<b>' + p.name + '</b> passed Start and collected ' + money(SALARY) + '.');
+    say('<b>' + p.name + '</b> passed Start, +' + money(SALARY) + '.');
   }
   renderAll();
   landOn(p);
 }
 
-function landOn(p) {
+function landOn(p, multiplier = 1) {
   const idx = p.at;
   const tile = TILES[idx];
   const owner = game.owners[idx];
 
   switch (tile.type) {
-    case 'go':
-      say('<b>' + p.name + '</b> landed on Start.');
-      return finishTurn();
-
-    case 'jail':
-      say('<b>' + p.name + '</b> is just visiting the Jail.');
-      return finishTurn();
-
-    case 'rest':
-      say('<b>' + p.name + '</b> takes a break at the Rest Stop.');
-      return finishTurn();
-
-    case 'tojail':
-      p.at = 10;
-      say('<b>' + p.name + '</b> was sent to Jail.');
-      renderAll();
-      return finishTurn();
-
+    case 'go':     say('<b>' + p.name + '</b> is on Start.'); return finishTurn();
+    case 'jail':   say('<b>' + p.name + '</b> is visiting the Jail.'); return finishTurn();
+    case 'rest':   say('<b>' + p.name + '</b> rests.'); return finishTurn();
+    case 'tojail': return sendToJail(p);
     case 'tax':
-      say('<b>' + p.name + '</b> paid ' + money(tile.amount) + ' in ' + tile.name + '.');
-      pay(p, tile.amount, null);
-      return finishTurn();
-
-    case 'chance':
-    case 'chest':
-      // Cards arrive in stage 2; the spaces are inert until then.
-      say('<b>' + p.name + '</b> landed on ' + tile.name + '. Nothing happens yet.');
-      return finishTurn();
-
-    default: break;                 // prop, rail, util fall through
+      say('<b>' + p.name + '</b> pays ' + money(tile.amount) + ' in ' + tile.name + '.');
+      charge(p, tile.amount, null);
+      return settle();
+    case 'chance': return drawCard(p, 'chance');
+    case 'chest':  return drawCard(p, 'chest');
+    default: break;
   }
 
-  if (owner === -1) {
-    return offerPurchase(p, idx);
-  }
+  if (owner === -1) return offerPurchase(p, idx);
+
   if (owner === game.turn) {
     say('<b>' + p.name + '</b> is on their own ' + tile.name + '.');
     return finishTurn();
   }
+  if (game.mortgaged[idx]) {
+    say(tile.name + ' is mortgaged — no rent due.');
+    return finishTurn();
+  }
 
   const holder = game.players[owner];
-  const due = rentFor(idx, owner);
+  const due = rentFor(idx, multiplier);
   say('<b>' + p.name + '</b> pays ' + money(due) + ' rent to <b>' + holder.name + '</b> for ' + tile.name + '.');
-  pay(p, due, holder);
-  finishTurn();
+  charge(p, due, holder);
+  settle();
 }
 
-// Rent doubles on a full colour group; rails and utilities scale with how many
-// of their kind the owner holds.
-function rentFor(idx, owner) {
-  const tile = TILES[idx];
-  if (tile.type === 'rail') {
-    const held = countType('rail', owner);
-    return 25 * Math.pow(2, held - 1);
-  }
-  if (tile.type === 'util') {
-    const held = countType('util', owner);
-    return held === 2 ? 100 : 50;
-  }
-  const group = TILES.filter(t => t.group === tile.group);
-  const ownsAll = group.every(t => game.owners[TILES.indexOf(t)] === owner);
-  return ownsAll ? tile.rent * 2 : tile.rent;
-}
+function drawCard(p, which) {
+  const deck = which === 'chance' ? CHANCE : CHEST;
+  const order = game.decks[which];
+  if (!order.length) game.decks[which] = shuffled(deck);
 
-function countType(type, owner) {
-  return TILES.reduce((n, t, i) => n + (t.type === type && game.owners[i] === owner ? 1 : 0), 0);
+  let card, guard = 0;
+  do {
+    const i = game.decks[which].shift();
+    card = deck[i];
+    game.decks[which].push(i);
+    guard++;
+  } while (card.text.startsWith('Get out of Jail') && p.pardons > 0 && guard < 20);
+
+  showCard((which === 'chance' ? 'Chance: ' : 'Treasury: ') + card.text);
+  say('<b>' + p.name + '</b> drew: ' + card.text);
+  card.act(p);
 }
 
 function offerPurchase(p, idx) {
   const tile = TILES[idx];
   if (p.cash < tile.price) {
-    say('<b>' + p.name + '</b> cannot afford ' + tile.name + ' (' + money(tile.price) + ').');
+    say('<b>' + p.name + '</b> cannot afford ' + tile.name + '.');
     return finishTurn();
   }
 
   if (isAi(p)) {
-    // Keep a cushion so a bad landing right after does not end the game.
     const wants = p.cash - tile.price >= 250 || tile.type !== 'prop';
     if (wants) buy(p, idx); else say('<b>' + p.name + '</b> passed on ' + tile.name + '.');
     return finishTurn();
@@ -471,24 +758,16 @@ function offerPurchase(p, idx) {
 function buy(p, idx) {
   const tile = TILES[idx];
   p.cash -= tile.price;
-  game.owners[idx] = game.players.indexOf(p);
+  game.owners[idx] = idxOf(p);
   say('<b>' + p.name + '</b> bought ' + tile.name + ' for ' + money(tile.price) + '.');
   renderAll();
 }
 
-function pay(p, amount, to) {
-  p.cash -= amount;
-  if (to) to.cash += amount;
-  if (p.cash < 0) bankrupt(p);
-  renderAll();
-}
-
-function bankrupt(p) {
-  p.out = true;
-  p.cash = 0;
-  // Stage 1 returns the holdings to the bank; transfers arrive with trading.
-  game.owners = game.owners.map(o => (o === game.players.indexOf(p) ? -1 : o));
-  say('<b>' + p.name + '</b> is bankrupt and out of the game.');
+// Called after anything that might have ended a player: keeps the flow in one
+// place so cards and rent do not each need their own bankruptcy check.
+function settle() {
+  if (game.phase === 'over') return;
+  finishTurn();
 }
 
 function finishTurn() {
@@ -498,14 +777,16 @@ function finishTurn() {
     game.phase = 'over';
     const winner = alive[0];
     bannerTitle.textContent = (winner ? winner.name : 'Nobody') + ' wins';
-    bannerText.textContent = winner ? 'Everyone else is bankrupt' : 'Everyone went bankrupt';
+    bannerText.textContent = winner
+      ? 'Everyone else is bankrupt · final cash ' + money(winner.cash)
+      : 'Everyone went bankrupt';
     banner.hidden = false;
     renderAll();
     return;
   }
 
   const p = current();
-  if (!p.out && game.doubles > 0 && TILES[p.at].type !== 'tojail') {
+  if (!p.out && !p.inJail && game.doubles > 0) {
     game.phase = 'roll';
     note('Doubles — roll again.');
     renderAll();
@@ -514,17 +795,20 @@ function finishTurn() {
 
   game.phase = 'end';
   renderAll();
+  if (isAi(p)) aiBuild(p);
   if (isAi(p) || p.out) endTurn();
 }
 
 function endTurn() {
   game.doubles = 0;
+  cardEl.hidden = true;
   do {
     game.turn = (game.turn + 1) % game.players.length;
   } while (current().out);
 
-  game.phase = 'roll';
-  note('');
+  const p = current();
+  game.phase = p.inJail ? 'jail' : 'roll';
+  note(p.inJail ? 'In Jail — pay the fine, use a card, or roll for a double.' : '');
   renderAll();
   maybeAi();
 }
@@ -533,19 +817,119 @@ function maybeAi() {
   clearTimeout(game.aiTimer);
   const p = current();
   if (game.phase === 'over' || !isAi(p)) return;
+
   game.aiTimer = setTimeout(() => {
-    if (game.phase === 'roll') roll();
+    if (game.phase === 'jail') {
+      if (p.pardons > 0) usePardon(p);
+      else if (p.cash > 250 || p.jailRolls >= 2) payFine(p);
+      else roll();
+    } else if (game.phase === 'roll') roll();
     else if (game.phase === 'end') endTurn();
   }, 750);
+}
+
+// ---------------------------------------------------------------- building
+function canBuild(idx) {
+  const p = current();
+  const tile = TILES[idx];
+  if (tile.type !== 'prop' || game.owners[idx] !== game.turn) return false;
+  if (game.houses[idx] >= 5 || game.mortgaged[idx]) return false;
+  if (!ownsGroup(game.turn, tile.group)) return false;
+
+  // No building on a group with anything mortgaged in it, and build evenly.
+  const group = TILES.map((t, i) => (t.group === tile.group ? i : -1)).filter(i => i >= 0);
+  if (group.some(i => game.mortgaged[i])) return false;
+  if (group.some(i => game.houses[i] < game.houses[idx])) return false;
+
+  return p.cash >= HOUSE_COST[tile.group];
+}
+
+function canSell(idx) {
+  if (game.owners[idx] !== game.turn || game.houses[idx] === 0) return false;
+  const group = TILES.map((t, i) => (t.group === TILES[idx].group ? i : -1)).filter(i => i >= 0);
+  return !group.some(i => game.houses[i] > game.houses[idx]);
+}
+
+function build(idx) {
+  if (!canBuild(idx)) return;
+  const p = current();
+  const cost = HOUSE_COST[TILES[idx].group];
+  p.cash -= cost;
+  game.houses[idx]++;
+  say('<b>' + p.name + '</b> built ' + (game.houses[idx] === 5 ? 'a hotel' : 'a house') +
+      ' on ' + TILES[idx].name + ' for ' + money(cost) + '.');
+  renderAll();
+}
+
+function sellHouse(idx) {
+  if (!canSell(idx)) return;
+  const p = current();
+  const back = Math.floor(HOUSE_COST[TILES[idx].group] / 2);
+  game.houses[idx]--;
+  p.cash += back;
+  say('<b>' + p.name + '</b> sold a building on ' + TILES[idx].name + ' for ' + money(back) + '.');
+  renderAll();
+}
+
+function toggleMortgage(idx) {
+  const p = current();
+  if (game.owners[idx] !== game.turn) return;
+
+  if (game.mortgaged[idx]) {
+    const cost = Math.ceil(TILES[idx].price * 0.55);      // half back plus interest
+    if (p.cash < cost) return;
+    p.cash -= cost;
+    game.mortgaged[idx] = false;
+    say('<b>' + p.name + '</b> lifted the mortgage on ' + TILES[idx].name + ' for ' + money(cost) + '.');
+  } else {
+    if (game.houses[idx] > 0) return;
+    const value = Math.floor(TILES[idx].price / 2);
+    p.cash += value;
+    game.mortgaged[idx] = true;
+    say('<b>' + p.name + '</b> mortgaged ' + TILES[idx].name + ' for ' + money(value) + '.');
+  }
+  renderAll();
+}
+
+// The computer builds up its cheapest complete group first, keeping a cushion.
+function aiBuild(p) {
+  const mine = idxOf(p);
+  let guard = 0;
+  while (guard++ < 12) {
+    let pick = -1, bestCost = Infinity;
+    for (let i = 0; i < 40; i++) {
+      const tile = TILES[i];
+      if (tile.type !== 'prop' || game.owners[i] !== mine) continue;
+      if (game.houses[i] >= 5 || game.mortgaged[i]) continue;
+      if (!ownsGroup(mine, tile.group)) continue;
+
+      const group = TILES.map((t, k) => (t.group === tile.group ? k : -1)).filter(k => k >= 0);
+      if (group.some(k => game.mortgaged[k] || game.houses[k] < game.houses[i])) continue;
+
+      const cost = HOUSE_COST[tile.group];
+      if (p.cash - cost < 350) continue;
+      if (cost < bestCost) { bestCost = cost; pick = i; }
+    }
+    if (pick < 0) break;
+
+    p.cash -= bestCost;
+    game.houses[pick]++;
+    say('<b>' + p.name + '</b> built on ' + TILES[pick].name + '.');
+  }
+  renderAll();
 }
 
 // ---------------------------------------------------------------- render
 const boardEl = document.getElementById('board');
 const playersEl = document.getElementById('players');
+const deedsEl = document.getElementById('deeds');
+const deedsEmpty = document.getElementById('deedsEmpty');
 const logEl = document.getElementById('log');
 const rollBtn = document.getElementById('rollBtn');
 const buyBtn = document.getElementById('buyBtn');
 const passBtn = document.getElementById('passBtn');
+const payBtn = document.getElementById('payBtn');
+const cardBtn = document.getElementById('cardBtn');
 const endBtn = document.getElementById('endBtn');
 const newBtn = document.getElementById('newBtn');
 const playerCount = document.getElementById('playerCount');
@@ -556,7 +940,7 @@ const bannerText = document.getElementById('bannerText');
 const bannerBtn = document.getElementById('bannerBtn');
 
 const tileEls = [];
-let turnName, turnNote, dieA, dieB;
+let turnName, turnNote, cardEl, dieA, dieB;
 
 // Walk the ring: 0 sits bottom-right, then anticlockwise around the edge.
 function gridSpot(i) {
@@ -580,15 +964,12 @@ function buildBoard() {
     el.style.gridRow = spot.row;
     el.style.gridColumn = spot.col;
 
-    if (tile.group) {
-      const bar = document.createElement('div');
+    let bar = null;
+    const key = tile.group || (tile.type === 'rail' || tile.type === 'util' ? tile.type : null);
+    if (key) {
+      bar = document.createElement('div');
       bar.className = 'bar';
-      bar.style.background = COLORS[tile.group];
-      el.appendChild(bar);
-    } else if (tile.type === 'rail' || tile.type === 'util') {
-      const bar = document.createElement('div');
-      bar.className = 'bar';
-      bar.style.background = COLORS[tile.type];
+      bar.style.background = COLORS[key];
       el.appendChild(bar);
     }
 
@@ -597,15 +978,10 @@ function buildBoard() {
     nm.textContent = tile.name;
     el.appendChild(nm);
 
-    if (tile.price) {
+    if (tile.price || tile.amount) {
       const pr = document.createElement('div');
       pr.className = 'pr';
-      pr.textContent = money(tile.price);
-      el.appendChild(pr);
-    } else if (tile.amount) {
-      const pr = document.createElement('div');
-      pr.className = 'pr';
-      pr.textContent = '-' + money(tile.amount);
+      pr.textContent = tile.price ? money(tile.price) : '-' + money(tile.amount);
       el.appendChild(pr);
     }
 
@@ -614,7 +990,7 @@ function buildBoard() {
     el.appendChild(tokens);
 
     boardEl.appendChild(el);
-    tileEls.push({ el, tokens });
+    tileEls.push({ el, tokens, bar });
   });
 
   const centre = document.createElement('div');
@@ -622,23 +998,41 @@ function buildBoard() {
   centre.innerHTML =
     '<h1>Business</h1>' +
     '<div id="dice"><div class="die" id="dieA">–</div><div class="die" id="dieB">–</div></div>' +
-    '<div><div id="turnName"></div><div id="turnNote"></div></div>';
+    '<div><div id="turnName"></div><div id="turnNote"></div></div>' +
+    '<div id="card" hidden></div>';
   boardEl.appendChild(centre);
 
   turnName = document.getElementById('turnName');
   turnNote = document.getElementById('turnNote');
+  cardEl = document.getElementById('card');
   dieA = document.getElementById('dieA');
   dieB = document.getElementById('dieB');
 }
 
 function renderAll() {
-  // tiles
   tileEls.forEach((t, i) => {
     const owner = game.owners[i];
     t.el.classList.toggle('owned', owner !== -1);
+    t.el.classList.toggle('mortgaged', game.mortgaged[i]);
     if (owner !== -1) t.el.style.setProperty('--own', game.players[owner].color);
     t.el.classList.toggle('here', game.players.some(p => !p.out && p.at === i));
     t.tokens.innerHTML = '';
+
+    if (t.bar) {
+      t.bar.innerHTML = '';
+      const h = game.houses[i];
+      if (h === 5) {
+        const pip = document.createElement('div');
+        pip.className = 'pip hotel';
+        t.bar.appendChild(pip);
+      } else {
+        for (let k = 0; k < h; k++) {
+          const pip = document.createElement('div');
+          pip.className = 'pip';
+          t.bar.appendChild(pip);
+        }
+      }
+    }
   });
 
   game.players.forEach(p => {
@@ -649,28 +1043,34 @@ function renderAll() {
     tileEls[p.at].tokens.appendChild(dot);
   });
 
-  // player cards
   playersEl.innerHTML = '';
   game.players.forEach((p, i) => {
     const row = document.createElement('div');
     row.className = 'player' + (i === game.turn && game.phase !== 'over' ? ' active' : '') + (p.out ? ' out' : '');
     const owned = game.owners.filter(o => o === i).length;
+    const detail = p.out ? 'bankrupt'
+      : owned + ' deed' + (owned === 1 ? '' : 's') +
+        (p.pardons ? ' · ' + p.pardons + ' pardon' : '') +
+        ' · ' + (p.inJail ? 'in Jail' : TILES[p.at].name);
     row.innerHTML =
       '<span class="dot" style="background:' + p.color + '"></span>' +
-      '<span class="who">' + p.name +
-      '<span class="sub">' + (p.out ? 'bankrupt' : owned + ' deed' + (owned === 1 ? '' : 's') + ' · ' + TILES[p.at].name) + '</span></span>' +
+      '<span class="who">' + p.name + '<span class="sub">' + detail + '</span></span>' +
       '<span class="cash">' + money(p.cash) + '</span>';
     playersEl.appendChild(row);
   });
 
-  // controls
+  renderDeeds();
+
   const p = current();
   const human = p && !isAi(p) && !p.out && game.phase !== 'over';
-  rollBtn.disabled = !(human && game.phase === 'roll');
+  rollBtn.disabled = !(human && (game.phase === 'roll' || game.phase === 'jail'));
+  rollBtn.textContent = game.phase === 'jail' ? 'Roll for double' : 'Roll';
   endBtn.disabled = !(human && game.phase === 'end');
   const deciding = human && game.phase === 'decide';
   buyBtn.disabled = !deciding;
   passBtn.disabled = !deciding;
+  payBtn.disabled = !(human && game.phase === 'jail' && p.cash >= JAIL_FINE);
+  cardBtn.disabled = !(human && game.phase === 'jail' && p.pardons > 0);
 
   if (turnName) {
     turnName.textContent = game.phase === 'over' ? 'Game over' : p.name + "'s turn";
@@ -678,14 +1078,79 @@ function renderAll() {
   }
 }
 
+// The deed list only ever shows the human whose turn it is: building and
+// mortgaging are turn actions, and hiding the rest keeps pass-and-play honest.
+function renderDeeds() {
+  deedsEl.innerHTML = '';
+  const p = current();
+  const show = p && !isAi(p) && !p.out && game.phase !== 'over';
+
+  const mine = [];
+  if (show) for (let i = 0; i < 40; i++) if (game.owners[i] === game.turn) mine.push(i);
+
+  deedsEmpty.hidden = mine.length > 0;
+  deedsEmpty.textContent = show ? 'Nothing owned yet.' : 'Waiting for your turn.';
+
+  for (const i of mine) {
+    const tile = TILES[i];
+    const row = document.createElement('div');
+    row.className = 'deed';
+
+    const swatch = document.createElement('div');
+    swatch.className = 'swatch';
+    swatch.style.background = COLORS[tile.group || tile.type];
+
+    const info = document.createElement('div');
+    info.className = 'info';
+    const built = game.houses[i] === 5 ? 'hotel' : game.houses[i] + ' house' + (game.houses[i] === 1 ? '' : 's');
+    info.innerHTML = '<b>' + tile.name + '</b><span>' +
+      (game.mortgaged[i] ? 'mortgaged' : 'rent ' + money(rentFor(i)) + (tile.type === 'prop' ? ' · ' + built : '')) +
+      '</span>';
+
+    const btns = document.createElement('div');
+    btns.className = 'btns';
+
+    if (tile.type === 'prop') {
+      const b = document.createElement('button');
+      b.textContent = game.houses[i] === 4 ? 'Hotel' : 'Build';
+      b.disabled = !canBuild(i);
+      b.title = 'Build for ' + money(HOUSE_COST[tile.group]);
+      b.addEventListener('click', () => build(i));
+      btns.appendChild(b);
+
+      const s = document.createElement('button');
+      s.textContent = 'Sell';
+      s.disabled = !canSell(i);
+      s.addEventListener('click', () => sellHouse(i));
+      btns.appendChild(s);
+    }
+
+    const m = document.createElement('button');
+    m.textContent = game.mortgaged[i] ? 'Redeem' : 'Mortgage';
+    m.disabled = game.mortgaged[i]
+      ? p.cash < Math.ceil(tile.price * 0.55)
+      : game.houses[i] > 0;
+    m.addEventListener('click', () => toggleMortgage(i));
+    btns.appendChild(m);
+
+    row.append(swatch, info, btns);
+    deedsEl.appendChild(row);
+  }
+}
+
 function note(text) { if (turnNote) turnNote.textContent = text; }
+
+function showCard(text) {
+  cardEl.textContent = text;
+  cardEl.hidden = false;
+}
 
 function showDice(a, b) {
   dieA.textContent = a;
   dieB.textContent = b;
   dieA.classList.remove('rolling');
   dieB.classList.remove('rolling');
-  void dieA.offsetWidth;                    // restart the animation
+  void dieA.offsetWidth;
   dieA.classList.add('rolling');
   dieB.classList.add('rolling');
 }
@@ -694,12 +1159,14 @@ function say(html) {
   const line = document.createElement('div');
   line.innerHTML = html;
   logEl.prepend(line);
-  while (logEl.childElementCount > 40) logEl.lastElementChild.remove();
+  while (logEl.childElementCount > 60) logEl.lastElementChild.remove();
 }
 
 // ---------------------------------------------------------------- events
 rollBtn.addEventListener('click', roll);
 endBtn.addEventListener('click', endTurn);
+payBtn.addEventListener('click', () => { if (game.phase === 'jail') payFine(current()); });
+cardBtn.addEventListener('click', () => { if (game.phase === 'jail') usePardon(current()); });
 buyBtn.addEventListener('click', () => {
   if (game.phase !== 'decide') return;
   buy(current(), current().at);
@@ -716,7 +1183,7 @@ newBtn.addEventListener('click', newGame);
 bannerBtn.addEventListener('click', newGame);
 
 document.addEventListener('keydown', e => {
-  if (e.target.tagName === 'SELECT') return;
+  if (e.target.tagName === 'SELECT' || e.target.tagName === 'BUTTON') return;
   if (e.code !== 'Space' && e.code !== 'Enter') return;
   e.preventDefault();
   if (!rollBtn.disabled) roll();
