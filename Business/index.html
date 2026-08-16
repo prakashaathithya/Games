@@ -859,17 +859,6 @@ function keepCard(p) {
   settle();
 }
 
-function advance(p, steps) {
-  const from = p.at;
-  p.at = (p.at + steps) % 40;
-  if (p.at < from) {
-    p.cash += SALARY;
-    say('<b>' + p.name + '</b> passed Start, +' + money(SALARY) + '.');
-  }
-  renderAll();
-  landOn(p);
-}
-
 function landOn(p, multiplier = 1) {
   const idx = p.at;
   const tile = TILES[idx];

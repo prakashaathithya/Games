@@ -25,6 +25,14 @@ Open `index.html` in a browser, or serve the folder:
 npx serve .
 ```
 
+## Checking
+
+```sh
+node tools/check-syntax.mjs
+```
+
+Parses the module script inside every game. A parse error means the script never runs and the page loads dead, with nothing in the served HTML to show for it — worth catching before a deploy rather than after.
+
 ## Deploying
 
 The repository is linked to Vercel. Pushing to `main` deploys to production; any other branch gets a preview URL. There is no build step — Vercel serves the files as they are.

@@ -419,7 +419,7 @@ function fullGrid() {
 // Dig holes out of a full grid, keeping the solution unique, then grade what
 // is left. Puzzles that come out too easy or too hard are simply retried.
 function makePuzzle(difficulty) {
-  const want = TARGET[difficulty];
+  const want = TARGET[difficulty] || TARGET.medium;
   let fallback = null, fallbackMiss = 99;
 
   for (let attempt = 0; attempt < 10; attempt++) {
