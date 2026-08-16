@@ -2,7 +2,7 @@
 
 A property trading board game for two to four players, in the browser. Single HTML file, no build step and no libraries — the whole thing is DOM and CSS grid.
 
-Stages 1 and 2 are in. It plays a full game with cards, buildings, mortgages and jail.
+Stages 1 to 3 are in. It plays a full game with cards, buildings, mortgages, jail, auctions and trading.
 
 ## What works now
 
@@ -20,7 +20,11 @@ Stages 1 and 2 are in. It plays a full game with cards, buildings, mortgages and
 
 **Cards.** Sixteen Chance and sixteen Treasury cards, shuffled, cycling through the deck. Moves, fixed payments, collect-from-everyone, pay-everyone, per-building repair bills, straight to Jail, and two get-out-of-jail cards that stay in hand until used.
 
-**Debt.** A player who cannot cover a payment is made to raise the money first — buildings sold at half, then deeds mortgaged — and only goes bankrupt if that still is not enough. The creditor receives whatever the player actually had.
+**Auctions.** Any deed nobody buys goes under the hammer — turned down, or unaffordable. Every player still in the game bids, including whoever just declined it. Bids rise in steps of about a twentieth of the list price, or five steps at once, and the last bidder standing pays what they bid. If nobody bids at all, the deed stays with the bank.
+
+**Trading.** Offer any combination of your deeds, their deeds and cash in either direction. Buildings must be sold before a deed in that colour group can move. The computer judges an offer on what the deeds are worth to it — nearly double for one that completes a set — and wants about 15% more than it gives up. It also makes offers of its own, paying up to 1.7 times list for the deed that would complete one of its groups. In pass-and-play the other player answers on the same screen.
+
+**Debt.** A player who cannot cover a payment is made to raise the money first — buildings sold at half, then deeds mortgaged — and only goes bankrupt if that still is not enough. Everything then passes to whoever they owed: the cash they had, the deeds with their mortgages intact, any get-out-of-jail cards, and half the cost of every building, which goes back to the bank. A debt owed to the bank instead puts the deeds back on the market.
 
 Names, prices and rents are our own. Base rents sit near a tenth of the purchase price, steeper than the traditional table, which keeps games short.
 
@@ -28,7 +32,6 @@ Names, prices and rents are our own. Base rents sit near a tenth of the purchase
 
 | Stage | Adds |
 | --- | --- |
-| 3 | Auctions when a property is passed on, player-to-player trading, and deeds passing to the creditor on bankruptcy rather than back to the bank |
 | 4 | Token movement animation, sounds, save and resume, and AI difficulty levels |
 
 ## Controls
@@ -36,7 +39,9 @@ Names, prices and rents are our own. Base rents sit near a tenth of the purchase
 | Action | Input |
 | --- | --- |
 | Roll, then end turn | The buttons, or Space / Enter |
-| Buy or pass | The buttons, while the offer is open |
+| Buy, or send to auction | The buttons, while the offer is open |
+| Bid | The auction sheet: one step, five steps, or pass |
+| Trade | The Trade button, any time on your turn |
 | Jail | Pay ₹50, use a card, or roll for a double |
 | Build, sell, mortgage | The buttons beside each deed, on your turn |
 
