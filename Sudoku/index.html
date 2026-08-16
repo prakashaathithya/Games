@@ -1,0 +1,815 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Sudoku</title>
+<style>
+  * { box-sizing: border-box; }
+  :root {
+    --bg: #0f1319;
+    --panel: #191f27;
+    --panel-2: #222a34;
+    --line: rgba(255,255,255,0.09);
+    --ink: #e9ecf2;
+    --muted: #8b95a3;
+    --accent: #6fb7d3;
+    --given: #f1f4f8;
+    --entry: #86d0ee;
+    --bad: #e8776e;
+    --cell: #1c232c;
+    --cell-peer: #232c37;
+    --cell-same: #2b3a46;
+    --cell-sel: #35566a;
+    --rule: #3a4552;
+    --rule-bold: #6d7a89;
+  }
+  html, body {
+    margin: 0; padding: 0; min-height: 100%;
+    background: var(--bg); color: var(--ink);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    -webkit-text-size-adjust: 100%;
+    -webkit-user-select: none; user-select: none;
+  }
+  body {
+    display: flex; flex-direction: column; align-items: center;
+    gap: 12px; padding: 12px;
+    padding-top: max(12px, env(safe-area-inset-top));
+    padding-bottom: max(12px, env(safe-area-inset-bottom));
+  }
+
+  /* ------------------------------------------------------------ head ---- */
+  #head {
+    width: min(94vw, 460px);
+    display: flex; align-items: baseline; justify-content: space-between; gap: 10px;
+    font-variant-numeric: tabular-nums;
+  }
+  #head .label {
+    font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted);
+  }
+  #head .value { font-size: 15px; font-weight: 650; }
+  #head .value.bad { color: var(--bad); }
+
+  /* ----------------------------------------------------------- board ---- */
+  #board {
+    width: min(94vw, 66vh, 460px);
+    aspect-ratio: 1;
+    display: grid;
+    grid-template-columns: repeat(9, 1fr);
+    grid-template-rows: repeat(9, 1fr);
+    gap: 1px;
+    background: var(--rule);
+    border: 3px solid var(--rule-bold);
+    border-radius: 8px;
+    overflow: hidden;
+    touch-action: manipulation;
+  }
+
+  .cell {
+    position: relative;
+    background: var(--cell);
+    display: grid; place-items: center;
+    font-size: clamp(17px, 4.6vh, 30px);
+    font-weight: 500; color: var(--entry);
+    cursor: pointer;
+  }
+  /* The thicker rules between the three-by-three boxes. */
+  .cell.br { box-shadow: inset -2px 0 0 var(--rule-bold); }
+  .cell.bb { box-shadow: inset 0 -2px 0 var(--rule-bold); }
+  .cell.br.bb { box-shadow: inset -2px 0 0 var(--rule-bold), inset 0 -2px 0 var(--rule-bold); }
+
+  .cell.peer { background: var(--cell-peer); }
+  .cell.same { background: var(--cell-same); }
+  .cell.sel { background: var(--cell-sel); }
+  .cell.given { color: var(--given); font-weight: 650; }
+  .cell.bad { color: var(--bad); }
+
+  .notes {
+    position: absolute; inset: 6%;
+    display: grid; grid-template-columns: repeat(3, 1fr); grid-template-rows: repeat(3, 1fr);
+    font-size: clamp(6px, 1.5vh, 10px); font-weight: 600;
+    color: #7c8ea0; line-height: 1;
+  }
+  .notes span { display: grid; place-items: center; }
+
+  /* ------------------------------------------------------------ pad ---- */
+  #pad {
+    width: min(94vw, 460px);
+    display: grid; grid-template-columns: repeat(9, 1fr); gap: 5px;
+  }
+  #pad button {
+    padding: 0; min-height: clamp(40px, 6.4vh, 56px);
+    font-size: clamp(17px, 3vh, 22px); font-weight: 650;
+  }
+  #pad button .left {
+    display: block; font-size: 9px; font-weight: 500; color: var(--muted);
+  }
+  #pad button.done { opacity: 0.32; }
+
+  #tools {
+    width: min(94vw, 460px);
+    display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px;
+  }
+  #tools button { font-size: 13px; }
+  #tools button.on { background: var(--accent); color: #0c1a21; border-color: transparent; }
+  #tools .badge {
+    display: block; font-size: 9px; font-weight: 500; color: var(--muted);
+  }
+  #tools button.on .badge { color: rgba(0,0,0,0.55); }
+
+  button {
+    font: inherit; font-weight: 600;
+    padding: 10px 12px; min-height: 44px;
+    border-radius: 10px; border: 1px solid var(--line);
+    background: var(--panel-2); color: var(--ink); cursor: pointer;
+  }
+  button:hover:not(:disabled) { background: #2b3542; }
+  button.primary { background: var(--accent); color: #0c1a21; border-color: transparent; }
+  button:disabled { opacity: 0.4; cursor: default; }
+
+  /* ---------------------------------------------------------- panel ---- */
+  #panel {
+    width: min(94vw, 460px);
+    background: var(--panel); border: 1px solid var(--line);
+    border-radius: 14px; padding: 12px 14px;
+  }
+  #panel h2 {
+    margin: 0 0 9px; font-size: 10px; letter-spacing: 0.14em;
+    text-transform: uppercase; color: var(--muted); font-weight: 650;
+  }
+  #setup { display: flex; gap: 10px; flex-wrap: wrap; }
+  #setup label {
+    flex: 1 1 110px; display: flex; flex-direction: column; gap: 6px;
+    font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted);
+  }
+  select {
+    font: inherit; font-size: 14px; width: 100%;
+    color: var(--ink); background: var(--panel-2);
+    border: 1px solid var(--line); border-radius: 9px; padding: 9px; min-height: 42px;
+  }
+  #best { margin-top: 10px; font-size: 12.5px; color: var(--muted); }
+
+  #banner {
+    position: fixed; inset: 0; z-index: 20;
+    display: grid; place-items: center; text-align: center; padding: 24px;
+    background: rgba(8, 11, 16, 0.86); backdrop-filter: blur(6px);
+  }
+  #banner[hidden] { display: none; }
+  #banner h1 { margin: 0 0 6px; font-size: clamp(26px, 7vw, 40px); }
+  #banner p { margin: 0 0 20px; color: var(--muted); }
+
+  #busy {
+    position: fixed; inset: 0; z-index: 25;
+    display: grid; place-items: center;
+    background: rgba(8, 11, 16, 0.7); color: var(--muted); font-size: 14px;
+  }
+  #busy[hidden] { display: none; }
+</style>
+</head>
+<body>
+
+<div id="head">
+  <div><div class="label">Difficulty</div><div class="value" id="diffOut">Medium</div></div>
+  <div><div class="label">Mistakes</div><div class="value" id="mistakeOut">0</div></div>
+  <div><div class="label">Time</div><div class="value" id="timeOut">0:00</div></div>
+</div>
+
+<div id="board"></div>
+
+<div id="pad"></div>
+
+<div id="tools">
+  <button id="notesBtn" type="button">Notes<span class="badge">off</span></button>
+  <button id="eraseBtn" type="button">Erase<span class="badge">clear cell</span></button>
+  <button id="undoBtn" type="button">Undo<span class="badge">last move</span></button>
+  <button id="hintBtn" type="button">Hint<span class="badge">0 used</span></button>
+</div>
+
+<div id="panel">
+  <h2>New puzzle</h2>
+  <div id="setup">
+    <label>Difficulty
+      <select id="difficulty">
+        <option value="easy">Easy</option>
+        <option value="medium" selected>Medium</option>
+        <option value="hard">Hard</option>
+        <option value="expert">Expert</option>
+      </select>
+    </label>
+    <label>Sound
+      <select id="soundSel">
+        <option value="on" selected>On</option>
+        <option value="off">Off</option>
+      </select>
+    </label>
+  </div>
+  <div style="height:10px"></div>
+  <button id="newBtn" type="button" style="width:100%">Start new puzzle</button>
+  <div id="best"></div>
+</div>
+
+<div id="busy" hidden>Building a puzzle…</div>
+
+<div id="banner" hidden>
+  <div>
+    <h1 id="bannerTitle">Solved</h1>
+    <p id="bannerText"></p>
+    <button id="bannerBtn" class="primary" type="button">Another puzzle</button>
+  </div>
+</div>
+
+<script type="module">
+// ---------------------------------------------------------------- helpers
+// Candidates are kept as nine-bit masks, which makes the solver's inner loops
+// a handful of bit operations rather than array scans.
+const BIT = n => 1 << (n - 1);
+const ALL = 0b111111111;
+const bitCount = m => { let n = 0; while (m) { m &= m - 1; n++; } return n; };
+const lowestBit = m => Math.log2(m & -m) + 1;
+
+const ROW = i => (i / 9) | 0;
+const COL = i => i % 9;
+const BOX = i => ((i / 27) | 0) * 3 + (((i % 9) / 3) | 0);
+
+// Every cell that shares a row, column or box with each cell.
+const PEERS = Array.from({ length: 81 }, (_, i) => {
+  const set = new Set();
+  for (let j = 0; j < 81; j++) {
+    if (j === i) continue;
+    if (ROW(j) === ROW(i) || COL(j) === COL(i) || BOX(j) === BOX(i)) set.add(j);
+  }
+  return [...set];
+});
+
+const UNITS = [];
+for (let r = 0; r < 9; r++) UNITS.push(Array.from({ length: 9 }, (_, c) => r * 9 + c));
+for (let c = 0; c < 9; c++) UNITS.push(Array.from({ length: 9 }, (_, r) => r * 9 + c));
+for (let b = 0; b < 9; b++) {
+  const r0 = ((b / 3) | 0) * 3, c0 = (b % 3) * 3;
+  UNITS.push(Array.from({ length: 9 }, (_, k) => (r0 + ((k / 3) | 0)) * 9 + c0 + (k % 3)));
+}
+
+const shuffle = arr => {
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [arr[i], arr[j]] = [arr[j], arr[i]];
+  }
+  return arr;
+};
+
+// ---------------------------------------------------------------- solving
+// Counts solutions up to `limit`, so uniqueness is a cheap early exit.
+function countSolutions(grid, limit = 2, out = null) {
+  const g = Int8Array.from(grid);
+  let found = 0;
+
+  const used = i => {
+    let mask = 0;
+    for (const p of PEERS[i]) if (g[p]) mask |= BIT(g[p]);
+    return mask;
+  };
+
+  const step = () => {
+    let best = -1, bestMask = 0, bestCount = 10;
+    for (let i = 0; i < 81; i++) {
+      if (g[i]) continue;
+      const mask = ALL & ~used(i);
+      const n = bitCount(mask);
+      if (n === 0) return false;
+      if (n < bestCount) { bestCount = n; best = i; bestMask = mask; if (n === 1) break; }
+    }
+    if (best === -1) {
+      found++;
+      if (out && found === 1) out.set(g);
+      return found >= limit;
+    }
+    for (let v = 1; v <= 9; v++) {
+      if (!(bestMask & BIT(v))) continue;
+      g[best] = v;
+      if (step()) return true;
+      g[best] = 0;
+    }
+    return false;
+  };
+
+  step();
+  return found;
+}
+
+// A human-style solver. Which techniques it needs is what grades the puzzle.
+function logicalSolve(grid) {
+  const g = Int8Array.from(grid);
+  const cand = new Int16Array(81);
+  let hardest = 0;                       // 1 singles, 2 locked, 3 pairs
+
+  const recompute = () => {
+    for (let i = 0; i < 81; i++) {
+      if (g[i]) { cand[i] = 0; continue; }
+      let mask = ALL;
+      for (const p of PEERS[i]) if (g[p]) mask &= ~BIT(g[p]);
+      cand[i] = mask;
+    }
+  };
+
+  const place = (i, v) => { g[i] = v; recompute(); };
+
+  const singles = () => {
+    for (let i = 0; i < 81; i++) {
+      if (!g[i] && bitCount(cand[i]) === 1) { place(i, lowestBit(cand[i])); return true; }
+    }
+    for (const unit of UNITS) {
+      for (let v = 1; v <= 9; v++) {
+        const spots = unit.filter(i => !g[i] && (cand[i] & BIT(v)));
+        if (spots.length === 1 && !unit.some(i => g[i] === v)) { place(spots[0], v); return true; }
+      }
+    }
+    return false;
+  };
+
+  // A digit confined to one row or column inside a box (or the reverse) can be
+  // struck off the rest of that line or box.
+  const locked = () => {
+    let changed = false;
+    for (const unit of UNITS) {
+      for (let v = 1; v <= 9; v++) {
+        const spots = unit.filter(i => !g[i] && (cand[i] & BIT(v)));
+        if (spots.length < 2 || spots.length > 3) continue;
+
+        const sameRow = spots.every(i => ROW(i) === ROW(spots[0]));
+        const sameCol = spots.every(i => COL(i) === COL(spots[0]));
+        const sameBox = spots.every(i => BOX(i) === BOX(spots[0]));
+
+        const strike = target => {
+          for (const i of target) {
+            if (spots.includes(i) || g[i]) continue;
+            if (cand[i] & BIT(v)) { cand[i] &= ~BIT(v); changed = true; }
+          }
+        };
+        if (sameRow) strike(UNITS[ROW(spots[0])]);
+        if (sameCol) strike(UNITS[9 + COL(spots[0])]);
+        if (sameBox) strike(UNITS[18 + BOX(spots[0])]);
+      }
+    }
+    return changed;
+  };
+
+  const pairs = () => {
+    let changed = false;
+    for (const unit of UNITS) {
+      const open = unit.filter(i => !g[i]);
+      for (const a of open) {
+        if (bitCount(cand[a]) !== 2) continue;
+        for (const b of open) {
+          if (b <= a || cand[b] !== cand[a]) continue;
+          for (const i of open) {
+            if (i === a || i === b) continue;
+            if (cand[i] & cand[a]) { cand[i] &= ~cand[a]; changed = true; }
+          }
+        }
+      }
+    }
+    return changed;
+  };
+
+  recompute();
+  for (let guard = 0; guard < 400; guard++) {
+    if (!g.includes(0)) break;
+    if (singles()) { hardest = Math.max(hardest, 1); continue; }
+    if (locked()) { hardest = Math.max(hardest, 2); continue; }
+    if (pairs()) { hardest = Math.max(hardest, 3); continue; }
+    break;
+  }
+
+  return { solved: !g.includes(0), hardest };
+}
+
+// ---------------------------------------------------------------- puzzles
+const TARGET = {
+  easy:   { clues: 42, tier: 1 },
+  medium: { clues: 34, tier: 2 },
+  hard:   { clues: 29, tier: 3 },
+  expert: { clues: 26, tier: 4 },       // tier 4 means logic alone runs out
+};
+
+function fullGrid() {
+  const g = new Int8Array(81);
+  const fill = () => {
+    let best = -1, bestMask = 0, bestCount = 10;
+    for (let i = 0; i < 81; i++) {
+      if (g[i]) continue;
+      let mask = ALL;
+      for (const p of PEERS[i]) if (g[p]) mask &= ~BIT(g[p]);
+      const n = bitCount(mask);
+      if (n === 0) return false;
+      if (n < bestCount) { bestCount = n; best = i; bestMask = mask; }
+    }
+    if (best === -1) return true;
+    for (const v of shuffle([1, 2, 3, 4, 5, 6, 7, 8, 9])) {
+      if (!(bestMask & BIT(v))) continue;
+      g[best] = v;
+      if (fill()) return true;
+      g[best] = 0;
+    }
+    return false;
+  };
+  fill();
+  return g;
+}
+
+// Dig holes out of a full grid, keeping the solution unique, then grade what
+// is left. Puzzles that come out too easy or too hard are simply retried.
+function makePuzzle(difficulty) {
+  const want = TARGET[difficulty];
+  let fallback = null, fallbackMiss = 99;
+
+  for (let attempt = 0; attempt < 10; attempt++) {
+    const solution = fullGrid();
+    const puzzle = Int8Array.from(solution);
+    let clues = 81;
+
+    for (const i of shuffle([...Array(81).keys()])) {
+      if (clues <= want.clues) break;
+      const saved = puzzle[i];
+      puzzle[i] = 0;
+      if (countSolutions(puzzle, 2) !== 1) puzzle[i] = saved;
+      else clues--;
+    }
+
+    const grade = logicalSolve(puzzle);
+    const tier = grade.solved ? grade.hardest : 4;
+    if (tier === want.tier) return { puzzle, solution, tier, clues };
+
+    // Otherwise remember whichever attempt graded closest to what was asked.
+    const miss = Math.abs(tier - want.tier);
+    if (miss < fallbackMiss) { fallbackMiss = miss; fallback = { puzzle, solution, tier, clues }; }
+  }
+  return fallback;
+}
+
+// ---------------------------------------------------------------- state
+const state = {
+  puzzle: new Int8Array(81),
+  solution: new Int8Array(81),
+  values: new Int8Array(81),
+  notes: new Int16Array(81),
+  difficulty: 'medium',
+  selected: -1,
+  noteMode: false,
+  mistakes: 0,
+  hints: 0,
+  started: 0,
+  elapsed: 0,
+  done: false,
+  sound: true,
+  undo: [],
+};
+
+const SAVE_KEY = 'sudoku.save.v1';
+const BEST_KEY = 'sudoku.best.v1';
+
+const isGiven = i => state.puzzle[i] !== 0;
+
+function startPuzzle(difficulty) {
+  busy.hidden = false;
+  // Let the browser paint the notice before the generator locks the thread.
+  setTimeout(() => {
+    const made = makePuzzle(difficulty);
+    state.puzzle = made.puzzle;
+    state.solution = made.solution;
+    state.values = Int8Array.from(made.puzzle);
+    state.notes = new Int16Array(81);
+    state.difficulty = difficulty;
+    state.selected = -1;
+    state.mistakes = 0;
+    state.hints = 0;
+    state.elapsed = 0;
+    state.started = Date.now();
+    state.done = false;
+    state.undo = [];
+    busy.hidden = true;
+    banner.hidden = true;
+    render();
+    save();
+  }, 30);
+}
+
+// ---------------------------------------------------------------- moves
+function setCell(i, value) {
+  if (state.done || isGiven(i)) return;
+
+  state.undo.push({ i, value: state.values[i], notes: state.notes[i] });
+  if (state.undo.length > 200) state.undo.shift();
+
+  if (state.noteMode && value) {
+    state.values[i] = 0;
+    state.notes[i] ^= BIT(value);
+    sfxTap();
+  } else {
+    state.notes[i] = 0;
+    state.values[i] = value;
+    if (value) {
+      if (value === state.solution[i]) {
+        // A placed digit clears that pencil mark from everything it can see.
+        for (const p of PEERS[i]) state.notes[p] &= ~BIT(value);
+        sfxPlace();
+      } else {
+        state.mistakes++;
+        sfxWrong();
+      }
+    }
+  }
+
+  render();
+  save();
+  checkDone();
+}
+
+function undo() {
+  const last = state.undo.pop();
+  if (!last) return;
+  state.values[last.i] = last.value;
+  state.notes[last.i] = last.notes;
+  render();
+  save();
+}
+
+function hint() {
+  if (state.done) return;
+  const blanks = [];
+  for (let i = 0; i < 81; i++) if (!state.values[i] || state.values[i] !== state.solution[i]) blanks.push(i);
+  if (!blanks.length) return;
+
+  const i = state.selected >= 0 && blanks.includes(state.selected)
+    ? state.selected
+    : blanks[Math.floor(Math.random() * blanks.length)];
+
+  state.undo.push({ i, value: state.values[i], notes: state.notes[i] });
+  state.values[i] = state.solution[i];
+  state.notes[i] = 0;
+  for (const p of PEERS[i]) state.notes[p] &= ~BIT(state.solution[i]);
+  state.hints++;
+  sfxPlace();
+  render();
+  save();
+  checkDone();
+}
+
+function checkDone() {
+  for (let i = 0; i < 81; i++) if (state.values[i] !== state.solution[i]) return;
+
+  state.done = true;
+  state.elapsed = Math.floor((Date.now() - state.started) / 1000);
+  sfxWin();
+
+  const clean = state.hints === 0 && state.mistakes === 0;
+  const best = loadBest();
+  const previous = best[state.difficulty];
+  if (clean && (!previous || state.elapsed < previous)) {
+    best[state.difficulty] = state.elapsed;
+    try { localStorage.setItem(BEST_KEY, JSON.stringify(best)); } catch { /* ignore */ }
+  }
+
+  bannerTitle.textContent = 'Solved';
+  bannerText.textContent = clock(state.elapsed) + ' · ' + state.mistakes + ' mistake' +
+    (state.mistakes === 1 ? '' : 's') + ' · ' + state.hints + ' hint' + (state.hints === 1 ? '' : 's') +
+    (clean && (!previous || state.elapsed < previous) ? ' · new best' : '');
+  banner.hidden = false;
+  clearSave();
+  render();
+}
+
+// ---------------------------------------------------------------- storage
+function save() {
+  if (state.done) return;
+  try {
+    localStorage.setItem(SAVE_KEY, JSON.stringify({
+      puzzle: [...state.puzzle],
+      solution: [...state.solution],
+      values: [...state.values],
+      notes: [...state.notes],
+      difficulty: state.difficulty,
+      mistakes: state.mistakes,
+      hints: state.hints,
+      elapsed: Math.floor((Date.now() - state.started) / 1000),
+    }));
+  } catch { /* storage blocked: play on without it */ }
+}
+
+function restore() {
+  let data;
+  try { data = JSON.parse(localStorage.getItem(SAVE_KEY) || 'null'); } catch { return false; }
+  if (!data || !data.puzzle || data.puzzle.length !== 81) return false;
+
+  state.puzzle = Int8Array.from(data.puzzle);
+  state.solution = Int8Array.from(data.solution);
+  state.values = Int8Array.from(data.values);
+  state.notes = Int16Array.from(data.notes);
+  state.difficulty = data.difficulty || 'medium';
+  state.mistakes = data.mistakes || 0;
+  state.hints = data.hints || 0;
+  state.elapsed = data.elapsed || 0;
+  state.started = Date.now() - state.elapsed * 1000;
+  state.done = false;
+  difficulty.value = state.difficulty;
+  return true;
+}
+
+function clearSave() {
+  try { localStorage.removeItem(SAVE_KEY); } catch { /* nothing to clean up */ }
+}
+
+function loadBest() {
+  try { return JSON.parse(localStorage.getItem(BEST_KEY) || '{}') || {}; } catch { return {}; }
+}
+
+// ---------------------------------------------------------------- sound
+let audio = null;
+
+function initAudio() {
+  if (audio) return;
+  const Ctx = window.AudioContext || window.webkitAudioContext;
+  if (Ctx) audio = new Ctx();
+}
+
+function tone(freq, dur, type = 'triangle', peak = 0.08, delay = 0) {
+  if (!state.sound || !audio || audio.state !== 'running') return;
+  const t = audio.currentTime + delay;
+  const osc = audio.createOscillator();
+  const gain = audio.createGain();
+  osc.type = type;
+  osc.frequency.setValueAtTime(freq, t);
+  gain.gain.setValueAtTime(0.0001, t);
+  gain.gain.exponentialRampToValueAtTime(peak, t + 0.01);
+  gain.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+  osc.connect(gain).connect(audio.destination);
+  osc.start(t);
+  osc.stop(t + dur + 0.03);
+}
+
+function sfxTap()   { tone(520, 0.04, 'square', 0.04); }
+function sfxPlace() { tone(660, 0.09, 'triangle', 0.09); }
+function sfxWrong() { tone(200, 0.16, 'sawtooth', 0.09); tone(150, 0.2, 'sawtooth', 0.07, 0.06); }
+function sfxWin()   { [523, 659, 784, 1047].forEach((f, i) => tone(f, 0.3, 'triangle', 0.11, i * 0.11)); }
+
+// ---------------------------------------------------------------- render
+const boardEl = document.getElementById('board');
+const padEl = document.getElementById('pad');
+const diffOut = document.getElementById('diffOut');
+const mistakeOut = document.getElementById('mistakeOut');
+const timeOut = document.getElementById('timeOut');
+const notesBtn = document.getElementById('notesBtn');
+const eraseBtn = document.getElementById('eraseBtn');
+const undoBtn = document.getElementById('undoBtn');
+const hintBtn = document.getElementById('hintBtn');
+const newBtn = document.getElementById('newBtn');
+const difficulty = document.getElementById('difficulty');
+const soundSel = document.getElementById('soundSel');
+const bestOut = document.getElementById('best');
+const busy = document.getElementById('busy');
+const banner = document.getElementById('banner');
+const bannerTitle = document.getElementById('bannerTitle');
+const bannerText = document.getElementById('bannerText');
+const bannerBtn = document.getElementById('bannerBtn');
+
+const cells = [];
+const padButtons = [];
+
+function buildBoard() {
+  boardEl.innerHTML = '';
+  cells.length = 0;
+  for (let i = 0; i < 81; i++) {
+    const el = document.createElement('div');
+    el.className = 'cell' +
+      (COL(i) % 3 === 2 && COL(i) !== 8 ? ' br' : '') +
+      (ROW(i) % 3 === 2 && ROW(i) !== 8 ? ' bb' : '');
+    el.addEventListener('click', () => { state.selected = i; render(); });
+    boardEl.appendChild(el);
+    cells.push(el);
+  }
+
+  padEl.innerHTML = '';
+  padButtons.length = 0;
+  for (let v = 1; v <= 9; v++) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.innerHTML = v + '<span class="left"></span>';
+    btn.addEventListener('click', () => {
+      if (state.selected >= 0) setCell(state.selected, v);
+    });
+    padEl.appendChild(btn);
+    padButtons.push(btn);
+  }
+}
+
+function clock(secs) {
+  const m = Math.floor(secs / 60), s = secs % 60;
+  return m + ':' + String(s).padStart(2, '0');
+}
+
+function render() {
+  const sel = state.selected;
+  const selValue = sel >= 0 ? state.values[sel] : 0;
+
+  for (let i = 0; i < 81; i++) {
+    const el = cells[i];
+    const value = state.values[i];
+
+    el.classList.toggle('given', isGiven(i));
+    el.classList.toggle('bad', value !== 0 && value !== state.solution[i]);
+    el.classList.toggle('sel', i === sel);
+    el.classList.toggle('peer', sel >= 0 && i !== sel && PEERS[sel].includes(i));
+    el.classList.toggle('same', sel >= 0 && i !== sel && selValue !== 0 && value === selValue);
+
+    if (value) {
+      el.textContent = value;
+    } else if (state.notes[i]) {
+      el.textContent = '';
+      const notes = document.createElement('div');
+      notes.className = 'notes';
+      for (let v = 1; v <= 9; v++) {
+        const span = document.createElement('span');
+        span.textContent = (state.notes[i] & BIT(v)) ? v : '';
+        notes.appendChild(span);
+      }
+      el.appendChild(notes);
+    } else {
+      el.textContent = '';
+    }
+  }
+
+  // How many of each digit are still missing, shown under the pad key.
+  for (let v = 1; v <= 9; v++) {
+    let placed = 0;
+    for (let i = 0; i < 81; i++) if (state.values[i] === v && state.values[i] === state.solution[i]) placed++;
+    const btn = padButtons[v - 1];
+    btn.querySelector('.left').textContent = placed >= 9 ? 'done' : (9 - placed) + ' left';
+    btn.classList.toggle('done', placed >= 9);
+  }
+
+  diffOut.textContent = state.difficulty[0].toUpperCase() + state.difficulty.slice(1);
+  mistakeOut.textContent = state.mistakes;
+  mistakeOut.classList.toggle('bad', state.mistakes > 0);
+  notesBtn.classList.toggle('on', state.noteMode);
+  notesBtn.querySelector('.badge').textContent = state.noteMode ? 'on' : 'off';
+  hintBtn.querySelector('.badge').textContent = state.hints + ' used';
+  undoBtn.disabled = state.undo.length === 0;
+
+  const best = loadBest();
+  bestOut.textContent = ['easy', 'medium', 'hard', 'expert']
+    .filter(d => best[d])
+    .map(d => d[0].toUpperCase() + d.slice(1) + ' ' + clock(best[d]))
+    .join(' · ') || 'No clean solves yet — finish one with no hints or mistakes.';
+}
+
+function tick() {
+  if (!state.done) state.elapsed = Math.floor((Date.now() - state.started) / 1000);
+  timeOut.textContent = clock(state.elapsed);
+}
+
+// ---------------------------------------------------------------- events
+notesBtn.addEventListener('click', () => { state.noteMode = !state.noteMode; render(); });
+eraseBtn.addEventListener('click', () => { if (state.selected >= 0) setCell(state.selected, 0); });
+undoBtn.addEventListener('click', undo);
+hintBtn.addEventListener('click', hint);
+newBtn.addEventListener('click', () => { clearSave(); startPuzzle(difficulty.value); });
+bannerBtn.addEventListener('click', () => { banner.hidden = true; startPuzzle(difficulty.value); });
+soundSel.addEventListener('change', () => { state.sound = soundSel.value === 'on'; });
+
+document.addEventListener('pointerdown', () => {
+  initAudio();
+  if (audio && audio.state === 'suspended') audio.resume();
+});
+
+document.addEventListener('keydown', e => {
+  if (e.target.tagName === 'SELECT' || e.target.tagName === 'BUTTON') return;
+
+  if (e.key >= '1' && e.key <= '9') {
+    if (state.selected >= 0) setCell(state.selected, parseInt(e.key, 10));
+    return;
+  }
+  if (e.key === 'Backspace' || e.key === 'Delete' || e.key === '0') {
+    if (state.selected >= 0) setCell(state.selected, 0);
+    return;
+  }
+  if (e.key === 'n' || e.key === 'N') { state.noteMode = !state.noteMode; render(); return; }
+  if (e.key === 'u' || e.key === 'U') { undo(); return; }
+
+  const moves = { ArrowUp: -9, ArrowDown: 9, ArrowLeft: -1, ArrowRight: 1 };
+  if (moves[e.key] === undefined) return;
+  e.preventDefault();
+  const from = state.selected < 0 ? 40 : state.selected;
+  let to = from + moves[e.key];
+  if (e.key === 'ArrowLeft' && COL(from) === 0) to = from;
+  if (e.key === 'ArrowRight' && COL(from) === 8) to = from;
+  if (to < 0 || to > 80) to = from;
+  state.selected = to;
+  render();
+});
+
+buildBoard();
+state.sound = soundSel.value === 'on';
+if (restore()) render(); else startPuzzle(difficulty.value);
+setInterval(tick, 250);
+</script>
+</body>
+</html>
