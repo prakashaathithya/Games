@@ -1,0 +1,800 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Ludo</title>
+<style>
+  * { box-sizing: border-box; }
+  :root {
+    --bg: #101319;
+    --panel: #1a1f28;
+    --panel-2: #232a35;
+    --line: rgba(255,255,255,0.09);
+    --ink: #e9ecf2;
+    --muted: #8c96a5;
+    --accent: #6fd39b;
+    --red: #d9534f;
+    --green: #4c9f70;
+    --yellow: #dcb246;
+    --blue: #4a7fc1;
+    --track: #f4f1e8;
+    --grid: #cfc9bb;
+  }
+  html, body {
+    margin: 0; padding: 0; min-height: 100%;
+    background: var(--bg); color: var(--ink);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    -webkit-text-size-adjust: 100%;
+  }
+  body {
+    display: flex; flex-direction: column; align-items: center;
+    gap: 14px; padding: 12px;
+    padding-top: max(12px, env(safe-area-inset-top));
+    padding-bottom: max(12px, env(safe-area-inset-bottom));
+  }
+
+  /* ----------------------------------------------------------- board ---- */
+  #board {
+    width: min(94vw, 74vh, 660px);
+    aspect-ratio: 1;
+    display: grid;
+    grid-template-columns: repeat(15, 1fr);
+    grid-template-rows: repeat(15, 1fr);
+    background: #12271f;
+    border: 3px solid #0d1c16;
+    border-radius: 10px;
+    overflow: hidden;
+    box-shadow: 0 22px 50px rgba(0,0,0,0.5);
+    touch-action: manipulation;
+  }
+
+  .cell {
+    position: relative;
+    background: var(--track);
+    border: 1px solid var(--grid);
+    display: flex; flex-wrap: wrap; gap: 1px;
+    align-items: center; justify-content: center;
+  }
+  .cell.safe::before {
+    content: '★'; position: absolute; inset: 0;
+    display: grid; place-items: center;
+    font-size: 62%; color: rgba(0,0,0,0.32); pointer-events: none;
+  }
+  .cell.r { background: var(--red); }
+  .cell.g { background: var(--green); }
+  .cell.y { background: var(--yellow); }
+  .cell.b { background: var(--blue); }
+  .cell.home { opacity: 0.9; }
+
+  .base {
+    display: grid; place-items: center;
+    border: 1px solid rgba(0,0,0,0.25);
+  }
+  .base.r { background: var(--red); }
+  .base.g { background: var(--green); }
+  .base.y { background: var(--yellow); }
+  .base.b { background: var(--blue); }
+  .base .yard {
+    width: 74%; height: 74%;
+    background: var(--track); border-radius: 12%;
+    display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr;
+    place-items: center; padding: 6%;
+  }
+
+  #centre {
+    grid-row: 7 / 10; grid-column: 7 / 10;
+    position: relative;
+    background:
+      conic-gradient(from 45deg,
+        var(--yellow) 0deg 90deg,
+        var(--blue)   90deg 180deg,
+        var(--red)    180deg 270deg,
+        var(--green)  270deg 360deg);
+    display: grid; place-items: center;
+    border: 1px solid rgba(0,0,0,0.25);
+  }
+  #centre .finished {
+    display: flex; flex-wrap: wrap; gap: 2px; justify-content: center;
+    width: 76%;
+  }
+  #centre .finished .token { width: 26%; }
+
+  .token {
+    width: 78%; aspect-ratio: 1;
+    border-radius: 50%;
+    border: 2px solid rgba(0,0,0,0.45);
+    box-shadow: 0 2px 4px rgba(0,0,0,0.4), inset 0 -2px 4px rgba(0,0,0,0.25);
+    cursor: default;
+  }
+  .cell .token.shared { width: 42%; }
+  .token.r { background: var(--red); }
+  .token.g { background: var(--green); }
+  .token.y { background: var(--yellow); }
+  .token.b { background: var(--blue); }
+  .token.movable {
+    cursor: pointer;
+    animation: bob .9s ease-in-out infinite;
+    box-shadow: 0 0 0 3px rgba(255,255,255,0.85), 0 3px 6px rgba(0,0,0,0.45);
+  }
+  @keyframes bob {
+    0%, 100% { transform: translateY(0) scale(1); }
+    50% { transform: translateY(-12%) scale(1.06); }
+  }
+  .base .yard .token { width: 66%; }
+
+  /* ----------------------------------------------------------- panel ---- */
+  #panel {
+    width: min(94vw, 660px);
+    display: grid; gap: 12px;
+    grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+  }
+  .card {
+    background: var(--panel); border: 1px solid var(--line);
+    border-radius: 14px; padding: 12px 14px;
+  }
+  .card h2 {
+    margin: 0 0 9px; font-size: 10px; letter-spacing: 0.14em;
+    text-transform: uppercase; color: var(--muted); font-weight: 650;
+  }
+
+  #turnRow { display: flex; align-items: center; gap: 12px; }
+  #die {
+    width: 56px; height: 56px; flex: 0 0 auto;
+    background: #f6f2e8; color: #1d2229;
+    border-radius: 22%;
+    display: grid; place-items: center;
+    font-size: 30px; font-weight: 700;
+    box-shadow: 0 4px 10px rgba(0,0,0,0.45);
+  }
+  #die.rolling { animation: shake .4s ease-in-out; }
+  @keyframes shake {
+    0%,100% { transform: none; }
+    30% { transform: translateY(-7px) rotate(-14deg); }
+    70% { transform: translateY(-3px) rotate(12deg); }
+  }
+  #turnText { font-size: 15px; font-weight: 650; }
+  #turnNote { font-size: 12px; color: var(--muted); min-height: 1.2em; }
+
+  #players { display: flex; flex-direction: column; gap: 7px; }
+  .player {
+    display: grid; grid-template-columns: auto 1fr auto; gap: 9px; align-items: center;
+    padding: 7px 9px; border-radius: 10px;
+    background: var(--panel-2); border: 1px solid transparent; font-size: 13px;
+  }
+  .player.active { border-color: var(--accent); background: #24313c; }
+  .player.done { opacity: 0.55; }
+  .player .dot { width: 13px; height: 13px; border-radius: 50%; border: 1.5px solid rgba(0,0,0,0.4); }
+  .player .who { font-weight: 600; }
+  .player .sub { display: block; font-size: 10.5px; color: var(--muted); font-weight: 400; }
+  .player .pts { font-variant-numeric: tabular-nums; font-weight: 650; }
+
+  #actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+  button {
+    font: inherit; font-size: 14px; font-weight: 600;
+    padding: 11px 16px; min-height: 44px;
+    border-radius: 10px; border: 1px solid var(--line);
+    background: var(--panel-2); color: var(--ink); cursor: pointer; flex: 1 1 auto;
+  }
+  button:hover:not(:disabled) { background: #2c3543; }
+  button.primary { background: var(--accent); color: #10241a; border-color: transparent; }
+  button:disabled { opacity: 0.4; cursor: default; }
+
+  #log {
+    height: 116px; overflow-y: auto;
+    display: flex; flex-direction: column-reverse; gap: 5px;
+    font-size: 12.5px; line-height: 1.4; color: #b6bfcc;
+  }
+  #log b { color: var(--ink); }
+
+  #setup { display: flex; gap: 10px; flex-wrap: wrap; }
+  #setup label {
+    flex: 1 1 100px; display: flex; flex-direction: column; gap: 6px;
+    font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted);
+  }
+  select {
+    font: inherit; font-size: 14px; width: 100%;
+    color: var(--ink); background: var(--panel-2);
+    border: 1px solid var(--line); border-radius: 9px; padding: 9px; min-height: 42px;
+  }
+
+  #banner {
+    position: fixed; inset: 0; z-index: 20;
+    display: grid; place-items: center; text-align: center; padding: 24px;
+    background: rgba(8, 11, 16, 0.85); backdrop-filter: blur(6px);
+  }
+  #banner[hidden] { display: none; }
+  #banner h1 { margin: 0 0 6px; font-size: clamp(26px, 7vw, 40px); }
+  #banner p { margin: 0 0 20px; color: var(--muted); }
+
+  @media (max-width: 560px) {
+    #panel { grid-template-columns: 1fr; }
+    #log { height: 96px; }
+  }
+</style>
+</head>
+<body>
+
+<div id="board"></div>
+
+<div id="panel">
+  <div class="card">
+    <h2>Turn</h2>
+    <div id="turnRow">
+      <div id="die">–</div>
+      <div>
+        <div id="turnText">Red to roll</div>
+        <div id="turnNote"></div>
+      </div>
+    </div>
+    <div id="actions">
+      <button id="rollBtn" class="primary" type="button">Roll</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Players</h2>
+    <div id="players"></div>
+  </div>
+
+  <div class="card">
+    <h2>Log</h2>
+    <div id="log"></div>
+  </div>
+
+  <div class="card">
+    <h2>New game</h2>
+    <div id="setup">
+      <label>Players
+        <select id="playerCount">
+          <option value="2">2</option>
+          <option value="3">3</option>
+          <option value="4" selected>4</option>
+        </select>
+      </label>
+      <label>Opponents
+        <select id="opponents">
+          <option value="ai" selected>Computer</option>
+          <option value="human">Pass and play</option>
+        </select>
+      </label>
+      <label>Difficulty
+        <select id="difficulty">
+          <option value="easy">Easy</option>
+          <option value="normal" selected>Normal</option>
+          <option value="hard">Hard</option>
+        </select>
+      </label>
+    </div>
+    <div style="height:10px"></div>
+    <button id="newBtn" type="button">Start new game</button>
+  </div>
+</div>
+
+<div id="banner" hidden>
+  <div>
+    <h1 id="bannerTitle">Red wins</h1>
+    <p id="bannerText">All four tokens home</p>
+    <button id="bannerBtn" class="primary" type="button">Play again</button>
+  </div>
+</div>
+
+<script type="module">
+// ---------------------------------------------------------------- board map
+// The board is a 15x15 grid. The track is the outer two lanes of each arm plus
+// the tip of it: 13 squares per arm, 52 in all, walked clockwise from the top
+// left of the left arm.
+const RING = [
+  [6,0],[6,1],[6,2],[6,3],[6,4],[6,5],
+  [5,6],[4,6],[3,6],[2,6],[1,6],[0,6],
+  [0,7],
+  [0,8],[1,8],[2,8],[3,8],[4,8],[5,8],
+  [6,9],[6,10],[6,11],[6,12],[6,13],[6,14],
+  [7,14],
+  [8,14],[8,13],[8,12],[8,11],[8,10],[8,9],
+  [9,8],[10,8],[11,8],[12,8],[13,8],[14,8],
+  [14,7],
+  [14,6],[13,6],[12,6],[11,6],[10,6],[9,6],
+  [8,5],[8,4],[8,3],[8,2],[8,1],[8,0],
+  [7,0],
+];
+
+const RING_LEN = RING.length;          // 52
+const LAP = RING_LEN - 1;              // squares walked before turning in
+const HOME_RUN = 5;                    // coloured squares before the centre
+const FINISH = LAP + HOME_RUN + 1;     // 56: the centre itself
+
+// Each player starts on the square just past the arm they turn into.
+const SEATS = [
+  { key: 'r', name: 'Red',    css: '#d9534f', start: 1,  base: [0, 0],
+    home: [[7,1],[7,2],[7,3],[7,4],[7,5]] },
+  { key: 'g', name: 'Green',  css: '#4c9f70', start: 14, base: [0, 9],
+    home: [[1,7],[2,7],[3,7],[4,7],[5,7]] },
+  { key: 'y', name: 'Yellow', css: '#dcb246', start: 27, base: [9, 9],
+    home: [[7,13],[7,12],[7,11],[7,10],[7,9]] },
+  { key: 'b', name: 'Blue',   css: '#4a7fc1', start: 40, base: [9, 0],
+    home: [[13,7],[12,7],[11,7],[10,7],[9,7]] },
+];
+
+// Start squares and the star squares eight along from each: nothing can be
+// captured while standing on one.
+const SAFE = new Set([1, 9, 14, 22, 27, 35, 40, 48]);
+
+const STEP_MS = 130;
+const AI_LEVEL = {
+  easy:   { blunder: 0.45, risk: 0.3 },
+  normal: { blunder: 0.15, risk: 1.0 },
+  hard:   { blunder: 0.0,  risk: 1.6 },
+};
+
+// ---------------------------------------------------------------- state
+const game = {
+  players: [],        // { seat, name, ai, tokens: [pos...], home: count }
+  turn: 0,
+  die: 0,
+  phase: 'roll',      // roll | move | moving | over
+  sixes: 0,
+  difficulty: 'normal',
+  timer: null,
+};
+
+const current = () => game.players[game.turn];
+const seatOf = p => SEATS[p.seat];
+
+// Where a token sits, as a grid square. Null means it is still in its base.
+function squareOf(player, pos) {
+  const seat = SEATS[player.seat];
+  if (pos < 0 || pos === FINISH) return null;
+  if (pos <= LAP) return RING[(seat.start + pos) % RING_LEN];
+  return seat.home[pos - LAP - 1];
+}
+
+function ringIndex(player, pos) {
+  if (pos < 0 || pos > LAP) return -1;
+  return (SEATS[player.seat].start + pos) % RING_LEN;
+}
+
+// ---------------------------------------------------------------- setup
+function newGame() {
+  clearTimeout(game.timer);
+  const count = parseInt(playerCount.value, 10);
+  const vsAi = opponents.value === 'ai';
+  game.difficulty = difficulty.value;
+
+  // Two players sit opposite each other; three or four fill the seats in order.
+  const seats = count === 2 ? [0, 2] : count === 3 ? [0, 1, 2] : [0, 1, 2, 3];
+
+  game.players = seats.map((seat, i) => ({
+    seat,
+    name: vsAi && i > 0 ? 'Computer ' + i : SEATS[seat].name,
+    ai: vsAi && i > 0,
+    tokens: [-1, -1, -1, -1],
+    home: 0,
+  }));
+
+  game.turn = 0;
+  game.die = 0;
+  game.phase = 'roll';
+  game.sixes = 0;
+
+  logEl.innerHTML = '';
+  banner.hidden = true;
+  dieEl.textContent = '–';
+  say('New game. ' + count + ' players.');
+  render();
+  maybeAi();
+}
+
+// ---------------------------------------------------------------- rules
+function legalMoves(player, die) {
+  const moves = [];
+  player.tokens.forEach((pos, i) => {
+    if (pos === FINISH) return;
+    if (pos < 0) {
+      if (die === 6) moves.push({ token: i, from: pos, to: 0 });
+      return;
+    }
+    const to = pos + die;
+    if (to <= FINISH) moves.push({ token: i, from: pos, to });   // must land exactly
+  });
+  return moves;
+}
+
+function roll() {
+  if (game.phase !== 'roll') return;
+  const p = current();
+  const value = 1 + Math.floor(Math.random() * 6);
+  game.die = value;
+  showDie(value);
+  say('<b>' + p.name + '</b> rolled ' + value + '.');
+
+  game.sixes = value === 6 ? game.sixes + 1 : 0;
+  if (game.sixes === 3) {
+    say('Three sixes in a row — <b>' + p.name + '</b> loses the turn.');
+    game.sixes = 0;
+    return endTurn();
+  }
+
+  const moves = legalMoves(p, value);
+  if (!moves.length) {
+    note('Nothing can move.');
+    render();
+    game.timer = setTimeout(endTurn, 700);
+    return;
+  }
+
+  // One option is no decision, so play it rather than making anyone click.
+  if (moves.length === 1) {
+    game.phase = 'moving';
+    render();
+    game.timer = setTimeout(() => applyMove(p, moves[0]), 350);
+    return;
+  }
+
+  game.phase = 'move';
+  note(p.ai ? 'Thinking…' : 'Pick a token to move.');
+  render();
+  maybeAi();
+}
+
+function applyMove(player, move) {
+  game.phase = 'moving';
+  note('');
+  render();
+
+  let pos = move.from < 0 ? 0 : move.from;
+  player.tokens[move.token] = pos;
+
+  // Walk it square by square so the move can be followed.
+  const walk = () => {
+    if (pos >= move.to) return landed(player, move);
+    pos++;
+    player.tokens[move.token] = pos;
+    sfxStep();
+    render();
+    game.timer = setTimeout(walk, STEP_MS);
+  };
+
+  if (move.from < 0) {
+    sfxOut();
+    render();
+    game.timer = setTimeout(() => landed(player, move), 260);
+  } else {
+    walk();
+  }
+}
+
+function landed(player, move) {
+  let again = game.die === 6;
+  const pos = player.tokens[move.token];
+
+  if (pos === FINISH) {
+    player.home++;
+    again = true;
+    say('<b>' + player.name + '</b> brought a token home (' + player.home + ' of 4).');
+    sfxHome();
+  }
+
+  // A token landing on an opponent sends it back, unless the square is safe.
+  const ring = ringIndex(player, pos);
+  if (ring >= 0 && !SAFE.has(ring)) {
+    for (const other of game.players) {
+      if (other === player) continue;
+      other.tokens.forEach((op, i) => {
+        if (op < 0 || op > LAP) return;
+        if (ringIndex(other, op) !== ring) return;
+        other.tokens[i] = -1;
+        again = true;
+        say('<b>' + player.name + '</b> knocked a ' + seatOf(other).name + ' token back to base.');
+        sfxCapture();
+      });
+    }
+  }
+
+  render();
+
+  if (player.home === 4) {
+    game.phase = 'over';
+    bannerTitle.textContent = player.name + ' wins';
+    bannerText.textContent = 'All four tokens home';
+    banner.hidden = false;
+    sfxWin();
+    render();
+    return;
+  }
+
+  if (again) {
+    game.phase = 'roll';
+    note(game.die === 6 ? 'Rolled a six — go again.' : 'Another turn.');
+    render();
+    return maybeAi();
+  }
+
+  endTurn();
+}
+
+function endTurn() {
+  game.sixes = 0;
+  game.die = 0;
+  do {
+    game.turn = (game.turn + 1) % game.players.length;
+  } while (current().home === 4);
+
+  game.phase = 'roll';
+  note('');
+  render();
+  maybeAi();
+}
+
+// ---------------------------------------------------------------- computer
+function maybeAi() {
+  clearTimeout(game.timer);
+  const p = current();
+  if (game.phase === 'over' || !p.ai) return;
+
+  game.timer = setTimeout(() => {
+    if (game.phase === 'roll') roll();
+    else if (game.phase === 'move') applyMove(p, chooseMove(p));
+  }, 620);
+}
+
+// Score every legal move and take the best, with a chance of a careless pick
+// on the easier levels.
+function chooseMove(player) {
+  const moves = legalMoves(player, game.die);
+  const cfg = AI_LEVEL[game.difficulty] || AI_LEVEL.normal;
+  if (Math.random() < cfg.blunder) return moves[Math.floor(Math.random() * moves.length)];
+
+  let best = moves[0], bestScore = -Infinity;
+  for (const move of moves) {
+    let score = move.to - Math.max(0, move.from);      // progress
+
+    if (move.to === FINISH) score += 90;
+    else if (move.to > LAP) score += 30;               // safely up the home run
+    if (move.from < 0) score += 45;                    // getting out is worth a lot
+
+    const ring = move.to <= LAP ? (SEATS[player.seat].start + move.to) % RING_LEN : -1;
+    if (ring >= 0) {
+      if (captureAt(player, ring)) score += 70;
+      if (SAFE.has(ring)) score += 18;
+      else score -= threatAt(player, ring) * 22 * cfg.risk;
+    }
+    if (score > bestScore) { bestScore = score; best = move; }
+  }
+  return best;
+}
+
+function captureAt(player, ring) {
+  return game.players.some(other => other !== player && other.tokens.some((pos, i) =>
+    pos >= 0 && pos <= LAP && ringIndex(other, pos) === ring));
+}
+
+// How many opponent tokens sit one to six squares behind that square.
+function threatAt(player, ring) {
+  let n = 0;
+  for (const other of game.players) {
+    if (other === player) continue;
+    for (const pos of other.tokens) {
+      if (pos < 0 || pos > LAP) continue;
+      const at = ringIndex(other, pos);
+      const gap = (ring - at + RING_LEN) % RING_LEN;
+      if (gap >= 1 && gap <= 6) n++;
+    }
+  }
+  return n;
+}
+
+// ---------------------------------------------------------------- sound
+let audio = null;
+
+function initAudio() {
+  if (audio) return;
+  const Ctx = window.AudioContext || window.webkitAudioContext;
+  if (Ctx) audio = new Ctx();
+}
+
+function tone(freq, dur, type = 'triangle', peak = 0.11, delay = 0) {
+  if (!audio || audio.state !== 'running') return;
+  const t = audio.currentTime + delay;
+  const osc = audio.createOscillator();
+  const gain = audio.createGain();
+  osc.type = type;
+  osc.frequency.setValueAtTime(freq, t);
+  gain.gain.setValueAtTime(0.0001, t);
+  gain.gain.exponentialRampToValueAtTime(peak, t + 0.012);
+  gain.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+  osc.connect(gain).connect(audio.destination);
+  osc.start(t);
+  osc.stop(t + dur + 0.03);
+}
+
+function sfxDie()     { tone(190, 0.09, 'sawtooth', 0.07); tone(250, 0.07, 'sawtooth', 0.05, 0.07); }
+function sfxStep()    { tone(400 + Math.random() * 70, 0.045, 'square', 0.035); }
+function sfxOut()     { tone(520, 0.1, 'triangle', 0.1); tone(700, 0.12, 'triangle', 0.09, 0.07); }
+function sfxCapture() { tone(300, 0.12, 'sawtooth', 0.11); tone(180, 0.2, 'sawtooth', 0.1, 0.08); }
+function sfxHome()    { [523, 784].forEach((f, i) => tone(f, 0.2, 'triangle', 0.11, i * 0.1)); }
+function sfxWin()     { [523, 659, 784, 1047].forEach((f, i) => tone(f, 0.3, 'triangle', 0.12, i * 0.11)); }
+
+// ---------------------------------------------------------------- render
+const boardEl = document.getElementById('board');
+const playersEl = document.getElementById('players');
+const logEl = document.getElementById('log');
+const dieEl = document.getElementById('die');
+const turnText = document.getElementById('turnText');
+const turnNote = document.getElementById('turnNote');
+const rollBtn = document.getElementById('rollBtn');
+const newBtn = document.getElementById('newBtn');
+const playerCount = document.getElementById('playerCount');
+const opponents = document.getElementById('opponents');
+const difficulty = document.getElementById('difficulty');
+const banner = document.getElementById('banner');
+const bannerTitle = document.getElementById('bannerTitle');
+const bannerText = document.getElementById('bannerText');
+const bannerBtn = document.getElementById('bannerBtn');
+
+const cellAt = new Map();          // "row,col" -> element
+const yards = [];                  // per seat: the base's inner square
+let centreEl = null;
+
+function buildBoard() {
+  boardEl.innerHTML = '';
+  cellAt.clear();
+  yards.length = 0;
+
+  const place = (el, row, col, rowSpan = 1, colSpan = 1) => {
+    el.style.gridRow = (row + 1) + ' / span ' + rowSpan;
+    el.style.gridColumn = (col + 1) + ' / span ' + colSpan;
+    boardEl.appendChild(el);
+  };
+
+  // The four bases, each with a yard holding the tokens waiting to come out.
+  SEATS.forEach((seat, i) => {
+    const base = document.createElement('div');
+    base.className = 'base ' + seat.key;
+    const yard = document.createElement('div');
+    yard.className = 'yard';
+    base.appendChild(yard);
+    place(base, seat.base[0], seat.base[1], 6, 6);
+    yards[i] = yard;
+  });
+
+  // Track squares.
+  RING.forEach(([row, col], idx) => {
+    const el = document.createElement('div');
+    el.className = 'cell';
+    if (SAFE.has(idx)) el.classList.add('safe');
+    const owner = SEATS.find(s => s.start === idx);
+    if (owner) el.classList.add(owner.key);
+    place(el, row, col);
+    cellAt.set(row + ',' + col, el);
+  });
+
+  // Home runs.
+  SEATS.forEach(seat => {
+    seat.home.forEach(([row, col]) => {
+      const el = document.createElement('div');
+      el.className = 'cell home ' + seat.key;
+      place(el, row, col);
+      cellAt.set(row + ',' + col, el);
+    });
+  });
+
+  centreEl = document.createElement('div');
+  centreEl.id = 'centre';
+  centreEl.innerHTML = '<div class="finished"></div>';
+  boardEl.appendChild(centreEl);
+}
+
+function render() {
+  for (const el of cellAt.values()) el.innerHTML = '';
+  for (const yard of yards) yard.innerHTML = '';
+  const finished = centreEl.querySelector('.finished');
+  finished.innerHTML = '';
+
+  const p = current();
+  const human = p && !p.ai && game.phase === 'move';
+  const moves = human ? legalMoves(p, game.die) : [];
+  const movable = new Set(moves.map(m => m.token));
+
+  // Group tokens by square so a shared square can shrink them.
+  const perSquare = new Map();
+  game.players.forEach((player, pi) => {
+    player.tokens.forEach((pos, ti) => {
+      const square = squareOf(player, pos);
+      const key = pos === FINISH ? 'finish' : pos < 0 ? 'base' : square[0] + ',' + square[1];
+      if (!perSquare.has(key)) perSquare.set(key, []);
+      perSquare.get(key).push({ player, pi, ti, pos });
+    });
+  });
+
+  game.players.forEach((player, pi) => {
+    const seat = SEATS[player.seat];
+    player.tokens.forEach((pos, ti) => {
+      const token = document.createElement('div');
+      token.className = 'token ' + seat.key;
+
+      if (pi === game.turn && movable.has(ti)) {
+        token.classList.add('movable');
+        token.addEventListener('click', () => {
+          const move = moves.find(m => m.token === ti);
+          if (move && game.phase === 'move') applyMove(player, move);
+        });
+      }
+
+      if (pos === FINISH) { finished.appendChild(token); return; }
+      if (pos < 0) { yards[player.seat].appendChild(token); return; }
+
+      const [row, col] = squareOf(player, pos);
+      const cell = cellAt.get(row + ',' + col);
+      if (!cell) return;
+
+      // Several tokens on one square shrink and sit side by side.
+      const sharing = perSquare.get(row + ',' + col) || [];
+      if (sharing.length > 1) token.classList.add('shared');
+      cell.appendChild(token);
+    });
+  });
+
+  // players card
+  playersEl.innerHTML = '';
+  game.players.forEach((player, i) => {
+    const seat = SEATS[player.seat];
+    const row = document.createElement('div');
+    row.className = 'player' + (i === game.turn && game.phase !== 'over' ? ' active' : '') +
+      (player.home === 4 ? ' done' : '');
+    const out = player.tokens.filter(t => t >= 0 && t < FINISH).length;
+    row.innerHTML =
+      '<span class="dot" style="background:' + seat.css + '"></span>' +
+      '<span class="who">' + player.name +
+      '<span class="sub">' + out + ' on the board · ' + player.home + ' home</span></span>' +
+      '<span class="pts">' + player.home + '/4</span>';
+    playersEl.appendChild(row);
+  });
+
+  const name = game.phase === 'over' ? 'Game over' : p.name;
+  turnText.textContent = game.phase === 'over' ? name
+    : game.phase === 'roll' ? name + ' to roll'
+    : name + ' to move';
+  turnText.style.color = game.phase === 'over' ? 'var(--accent)' : SEATS[p.seat].css;
+  rollBtn.disabled = !(p && !p.ai && game.phase === 'roll');
+}
+
+function note(text) { turnNote.textContent = text; }
+
+function showDie(value) {
+  dieEl.textContent = value;
+  dieEl.classList.remove('rolling');
+  void dieEl.offsetWidth;
+  dieEl.classList.add('rolling');
+  sfxDie();
+}
+
+function say(html) {
+  const line = document.createElement('div');
+  line.innerHTML = html;
+  logEl.prepend(line);
+  while (logEl.childElementCount > 50) logEl.lastElementChild.remove();
+}
+
+// ---------------------------------------------------------------- events
+rollBtn.addEventListener('click', roll);
+newBtn.addEventListener('click', newGame);
+bannerBtn.addEventListener('click', newGame);
+
+document.addEventListener('pointerdown', () => {
+  initAudio();
+  if (audio && audio.state === 'suspended') audio.resume();
+});
+
+document.addEventListener('keydown', e => {
+  if (e.target.tagName === 'SELECT' || e.target.tagName === 'BUTTON') return;
+  if (e.code !== 'Space' && e.code !== 'Enter') return;
+  e.preventDefault();
+  if (!rollBtn.disabled) roll();
+});
+
+buildBoard();
+newGame();
+</script>
+</body>
+</html>

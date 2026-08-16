@@ -10,6 +10,7 @@ Live at **https://games-dice.vercel.app**.
 | --- | --- | --- |
 | [3D Dice Roller](Dice/) | `/Dice` | Physics-driven dice, d4 through d20, with custom colours and an orbit camera. |
 | [Sling Puck](SlingPuck/) | `/SlingPuck` | The wooden sling puck board: clear your half through the centre gap before your opponent does. |
+| [Ludo](Ludo/) | `/Ludo` | The four-player race board, against three computers or up to four people on one screen. |
 | [Business Board](Business/) | `/Business` | Property trading for two to four players, with cards, buildings, mortgages, jail, auctions and trading. |
 
 The root `index.html` is the menu that links to them.
