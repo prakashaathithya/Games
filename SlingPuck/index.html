@@ -139,7 +139,7 @@
 
 <div class="hud" id="topHud"><span class="pts">5</span><span class="name">left</span></div>
 <div class="hud" id="bottomHud"><span class="pts">5</span><span class="name">left</span></div>
-<div id="hint">Drag a puck back, release to sling it through the gap</div>
+<div id="hint">Slide a puck onto the elastic, pull it back, release</div>
 
 <div id="banner" hidden>
   <div>
@@ -170,7 +170,14 @@ const RAIL_H = 0.85;
 const DIV_T = 0.34;          // centre divider thickness
 const POST_R = DIV_T * 0.6;  // rounded ends of the divider, as collision posts
 
-const MAX_PULL = 3.4;        // how far a puck can be drawn back
+const BAND_INSET = 3.0;      // the elastic sits this far in front of the back wall,
+                             // leaving room to draw a puck back against it
+const BAND_SPAN = 0.82;      // fraction of the half-width the elastic covers
+const HOOK_TOL = 0.45;       // how close a puck must sit to count as hooked on
+const FIRE_CONE = Math.PI / 3;   // the band throws forward, 60° either side
+const MIN_PULL = 0.28;       // shorter than this is a nudge, not a shot
+
+const MAX_PULL = 2.4;        // how far a puck can be drawn back off the elastic
 const MAX_SPEED = 40;
 const MIN_SPEED = 7;
 const DRAG_K = 1.35;         // exponential velocity decay per second
@@ -224,6 +231,55 @@ const boardMat = new THREE.MeshStandardMaterial({ color: theme.board, roughness:
 const railMat = new THREE.MeshStandardMaterial({ color: theme.rail, roughness: 0.7, metalness: 0.03 });
 const markMat = new THREE.MeshBasicMaterial({ color: theme.mark, transparent: true, opacity: 0.5 });
 const bandMat = new THREE.MeshStandardMaterial({ color: 0x24211d, roughness: 0.55 });
+
+// ---------------------------------------------------------------- the band
+// Each half has an elastic strung across the back. A puck only shoots if it is
+// hooked on that elastic and drawn back from it, exactly as on the wooden board.
+const bands = [];                      // per side: { left, right } segments
+
+const bandZ = side => (side === 0 ? 1 : -1) * (halfL - BAND_INSET);
+const bandHalf = () => halfW * BAND_SPAN;
+
+function isHooked(puck) {
+  return Math.abs(puck.pos.y - bandZ(sideOf(puck))) <= PUCK_R + HOOK_TOL
+      && Math.abs(puck.pos.x) <= bandHalf() + PUCK_R;
+}
+
+// The elastic throws forward. Anything aimed wider than the cone — or plainly
+// backwards — is folded back to the edge of it.
+function forwardClamp(side, dx, dz) {
+  const f = side === 0 ? -1 : 1;       // which way the centre line lies
+  const angle = clamp(Math.atan2(dx, dz * f), -FIRE_CONE, FIRE_CONE);
+  return { x: Math.sin(angle), z: Math.cos(angle) * f };
+}
+
+function pullPointFor(side) {
+  for (const grip of grips.values()) {
+    if (grip.hooked && sideOf(grip.puck) === side) return grip.puck.pos;
+  }
+  if (state.aiPull && state.aiPull.side === side) return state.aiPull.puck.pos;
+  return null;
+}
+
+function setSegment(mesh, ax, az, bx, bz) {
+  const dx = bx - ax, dz = bz - az;
+  const len = Math.max(0.001, Math.hypot(dx, dz));
+  mesh.position.set((ax + bx) / 2, 0.13, (az + bz) / 2);
+  mesh.scale.set(len, 1, 1);
+  mesh.rotation.y = Math.atan2(-dz, dx);
+}
+
+function drawBands() {
+  if (bands.length < 2) return;
+  for (const side of [0, 1]) {
+    const z = bandZ(side), hw = bandHalf();
+    const pull = pullPointFor(side);
+    const px = pull ? clamp(pull.x, -hw, hw) : 0;
+    const pz = pull ? pull.y : z;
+    setSegment(bands[side].left, -hw, z, px, pz);
+    setSegment(bands[side].right, hw, z, px, pz);
+  }
+}
 
 function buildBoard() {
   for (const child of [...board.children]) {
@@ -279,10 +335,28 @@ function buildBoard() {
     ring.position.set(0, 0.012, sz * halfL * 0.52);
     board.add(ring);
 
-    // The elastic band each player shoots against, at the back of their half.
-    const bandZ = sz * (halfL - 0.9);
-    addBox(bandMat, halfW * 1.55, 0.13, 0.12, 0, 0.09, bandZ);
+    // Posts the elastic is strung between.
+    for (const sx of [-1, 1]) {
+      const peg = new THREE.Mesh(new THREE.CylinderGeometry(0.13, 0.13, 0.5, 12), railMat);
+      peg.position.set(sx * bandHalf(), 0.25, bandZ(sz > 0 ? 0 : 1));
+      peg.castShadow = true;
+      board.add(peg);
+    }
   }
+
+  // The elastic itself is two segments meeting at the pull point, so it can
+  // bend into a V behind a drawn-back puck.
+  bands.length = 0;
+  for (const side of [0, 1]) {
+    const seg = () => {
+      const m = new THREE.Mesh(new THREE.BoxGeometry(1, 0.14, 0.13), bandMat);
+      m.castShadow = true;
+      board.add(m);
+      return m;
+    };
+    bands.push({ left: seg(), right: seg() });
+  }
+  drawBands();
 
   const reach = Math.max(halfW, halfL) + 3;
   key.shadow.camera.left = -reach;
@@ -301,9 +375,13 @@ const puckMats = [
 
 const pucks = [];
 
+const ringGeo = new THREE.RingGeometry(PUCK_R * 1.16, PUCK_R * 1.38, 28);
+const ringMat = new THREE.MeshBasicMaterial({ color: 0xf0c46a, transparent: true, opacity: 0.75 });
+
 function spawnPucks(perSide) {
-  for (const p of pucks) scene.remove(p.mesh);
+  for (const p of pucks) { scene.remove(p.mesh); if (p.ring) scene.remove(p.ring); }
   pucks.length = 0;
+  state.aiPull = null;
 
   for (const sz of [1, -1]) {
     for (let i = 0; i < perSide; i++) {
@@ -312,15 +390,23 @@ function spawnPucks(perSide) {
       const cols = Math.ceil(perSide / 2);
       const spread = (halfW * 1.35) / Math.max(1, cols);
       const x = (inRow - (cols - 1) / 2) * spread + (row ? spread / 2 : 0);
-      const z = sz * (halfL * (row ? 0.42 : 0.62));
+      // Half the pucks start hooked on the elastic, the rest just in front of it.
+      const z = bandZ(sz > 0 ? 0 : 1) - sz * (row ? 1.6 : 0);
 
       const mesh = new THREE.Mesh(puckGeo, puckMats[(i + (sz > 0 ? 0 : 1)) % 2]);
       mesh.castShadow = true;
       mesh.receiveShadow = true;
       scene.add(mesh);
 
+      // A ring marks a puck that is hooked on the elastic and ready to shoot.
+      const ring = new THREE.Mesh(ringGeo, ringMat);
+      ring.rotation.x = -Math.PI / 2;
+      ring.visible = false;
+      scene.add(ring);
+
       pucks.push({
         mesh,
+        ring,
         pos: new THREE.Vector2(clamp(x, -(halfW - PUCK_R), halfW - PUCK_R), z),
         vel: new THREE.Vector2(0, 0),
         held: false,
@@ -381,6 +467,7 @@ const state = {
   perSide: 5,
   running: false,
   aiTimer: 0,
+  aiPull: null,
 };
 
 function sideOf(p) { return p.pos.y >= 0 ? 0 : 1; }   // 0 = bottom/near, 1 = top/far
@@ -551,7 +638,9 @@ function onPointerDown(e) {
 
   best.held = true;
   best.vel.set(0, 0);
-  grips.set(e.pointerId, { puck: best, anchor: best.pos.clone() });
+  // Only a puck already sitting on the elastic can be shot. Anything else is
+  // simply being slid across the board towards it.
+  grips.set(e.pointerId, { puck: best, anchor: best.pos.clone(), hooked: isHooked(best) });
   renderer.domElement.setPointerCapture?.(e.pointerId);
   onPointerMove(e);
 }
@@ -576,12 +665,12 @@ function onPointerMove(e) {
   grip.puck.pos.y = clamp(grip.anchor.y + dz, minZ, maxZ);
 
   const back = Math.hypot(grip.puck.pos.x - grip.anchor.x, grip.puck.pos.y - grip.anchor.y);
-  const power = clamp(back / MAX_PULL, 0, 1);
-  if (back > 0.01) {
-    drawAim(e.pointerId, grip.puck.pos,
-      (grip.anchor.x - grip.puck.pos.x) / back,
-      (grip.anchor.y - grip.puck.pos.y) / back, power);
-  }
+  if (!grip.hooked || back <= 0.01) { clearAim(e.pointerId); return; }
+
+  const shot = forwardClamp(sideOf(grip.puck),
+    (grip.anchor.x - grip.puck.pos.x) / back,
+    (grip.anchor.y - grip.puck.pos.y) / back);
+  drawAim(e.pointerId, grip.puck.pos, shot.x, shot.z, clamp(back / MAX_PULL, 0, 1));
 }
 
 function onPointerUp(e) {
@@ -594,10 +683,11 @@ function onPointerUp(e) {
   const back = Math.hypot(dx, dz);
   grip.puck.held = false;
 
-  if (back > 0.12) {
-    const power = clamp(back / MAX_PULL, 0, 1);
-    launch(grip.puck, dx / back, dz / back, power);
-  }
+  // No elastic, no shot: an unhooked puck has just been repositioned.
+  if (!grip.hooked || back < MIN_PULL) return;
+
+  const shot = forwardClamp(sideOf(grip.puck), dx / back, dz / back);
+  launch(grip.puck, shot.x, shot.z, clamp(back / MAX_PULL, 0, 1));
 }
 
 function launch(puck, dirX, dirZ, power) {
@@ -614,20 +704,51 @@ renderer.domElement.addEventListener('pointercancel', onPointerUp);
 document.addEventListener('gesturestart', e => e.preventDefault());
 
 // ---------------------------------------------------------------- ai
+// The computer plays the same way: it hooks a puck onto its elastic, draws it
+// back over half a second, and lets go.
 function aiTurn() {
+  if (state.aiPull) return;
   const mine = pucks.filter(p => sideOf(p) === 1 && !p.held);
   if (!mine.length) return;
 
-  // Prefer a puck with a clear straight run at the gap.
-  mine.sort((a, b) => Math.abs(a.pos.x) - Math.abs(b.pos.x));
+  const z = bandZ(1), hw = bandHalf();
+  mine.sort((a, b) => Math.abs(a.pos.y - z) - Math.abs(b.pos.y - z));
   const puck = mine[Math.floor(Math.random() * Math.min(2, mine.length))];
 
+  const hookX = clamp(puck.pos.x, -hw, hw);
   const targetX = clamp((Math.random() * 2 - 1) * gapHalf * 0.45, -gapHalf * 0.5, gapHalf * 0.5);
-  let angle = Math.atan2(targetX - puck.pos.x, 0 - puck.pos.y);
+  let angle = Math.atan2(targetX - hookX, 0 - z);
   angle += (Math.random() * 2 - 1) * AI_ERROR[state.difficulty];
 
+  const shot = forwardClamp(1, Math.sin(angle), Math.cos(angle));
   const [lo, hi] = AI_POWER[state.difficulty];
-  launch(puck, Math.sin(angle), Math.cos(angle), lo + Math.random() * (hi - lo));
+
+  puck.held = true;
+  puck.vel.set(0, 0);
+  puck.pos.set(hookX, z);
+  state.aiPull = {
+    puck, side: 1, hookX, z, dir: shot,
+    power: lo + Math.random() * (hi - lo),
+    t: 0, dur: 0.5,
+  };
+}
+
+function stepAiPull(dt) {
+  const a = state.aiPull;
+  if (!a) return;
+
+  a.t += dt;
+  const k = Math.min(1, a.t / a.dur);
+  const dist = MAX_PULL * a.power * k;
+
+  a.puck.pos.x = clamp(a.hookX - a.dir.x * dist, -(halfW - PUCK_R), halfW - PUCK_R);
+  a.puck.pos.y = clamp(a.z - a.dir.z * dist, -(halfL - PUCK_R), -(DIV_T / 2 + PUCK_R));
+
+  if (k >= 1) {
+    a.puck.held = false;
+    launch(a.puck, a.dir.x, a.dir.z, a.power);
+    state.aiPull = null;
+  }
 }
 
 // ---------------------------------------------------------------- sound
@@ -756,10 +877,11 @@ function animate() {
 
   if (state.running) {
     stepPucks(dt);
+    stepAiPull(dt);
 
     if (state.mode === 'ai') {
       state.aiTimer -= dt;
-      if (state.aiTimer <= 0) {
+      if (state.aiTimer <= 0 && !state.aiPull) {
         aiTurn();
         state.aiTimer = rand(...AI_GAP[state.difficulty]);
       }
@@ -771,7 +893,12 @@ function animate() {
 
   for (const p of pucks) {
     p.mesh.position.set(p.pos.x, PUCK_H / 2 + (p.held ? 0.12 : 0), p.pos.y);
+    if (p.ring) {
+      p.ring.visible = !p.held && isHooked(p);
+      p.ring.position.set(p.pos.x, 0.02, p.pos.y);
+    }
   }
+  drawBands();
 
   renderer.render(scene, camera);
 }
@@ -809,8 +936,8 @@ bannerButton.addEventListener('click', newGame);
 modeSel.addEventListener('change', () => {
   state.mode = modeSel.value;
   hint.textContent = state.mode === 'local'
-    ? 'Both players sling at once — clear your own half first'
-    : 'Drag a puck back, release to sling it through the gap';
+    ? 'Both elastics are live at once — clear your own half first'
+    : 'Slide a puck onto the elastic, pull it back, release';
   newGame();
 });
 diffSel.addEventListener('change', () => { state.difficulty = diffSel.value; });
