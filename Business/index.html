@@ -320,6 +320,19 @@
           <option value="human">Pass and play</option>
         </select>
       </label>
+      <label>Difficulty
+        <select id="difficulty">
+          <option value="easy">Easy</option>
+          <option value="normal" selected>Normal</option>
+          <option value="hard">Hard</option>
+        </select>
+      </label>
+      <label>Sound
+        <select id="soundSel">
+          <option value="on" selected>On</option>
+          <option value="off">Off</option>
+        </select>
+      </label>
     </div>
     <div style="height:10px"></div>
     <button id="newBtn" type="button">Start new game</button>
@@ -410,6 +423,20 @@ const JAIL_FINE = 50;
 const PLAYER_COLORS = ['#e05a5a', '#4f9de0', '#e3b23c', '#63c98a'];
 const PLAYER_NAMES = ['Player 1', 'Player 2', 'Player 3', 'Player 4'];
 
+const STEP_MS = 105;                       // pace of a token walking the board
+const SAVE_KEY = 'business.save.v1';
+const PREFS_KEY = 'business.prefs.v1';
+
+// How the computer plays. cushion: cash kept back when buying; auction: how far
+// past its own valuation it will chase a lot; build: cash held before building;
+// premium: how much more it wants than it gives in a trade; set: what a deed
+// completing a colour group is worth to it.
+const AI_LEVEL = {
+  easy:   { cushion: 420, auction: 0.80, build: 620, premium: 1.35, set: 1.30 },
+  normal: { cushion: 250, auction: 1.00, build: 350, premium: 1.15, set: 1.80 },
+  hard:   { cushion: 120, auction: 1.25, build: 200, premium: 1.05, set: 2.10 },
+};
+
 const money = n => '₹' + n.toLocaleString('en-IN');
 
 // ---------------------------------------------------------------- cards
@@ -458,18 +485,55 @@ const game = {
   houses: new Array(40).fill(0),
   mortgaged: new Array(40).fill(false),
   turn: 0,
-  phase: 'roll',       // roll | jail | decide | auction | trade | end | over
+  phase: 'roll',       // roll | moving | jail | decide | auction | trade | end | over
   doubles: 0,
   decks: { chance: [], chest: [] },
   auction: null,
   trade: null,
   aiTimer: null,
+  difficulty: 'normal',
+  sound: true,
 };
 
 const current = () => game.players[game.turn];
 const isAi = p => p.ai;
 const idxOf = p => game.players.indexOf(p);
 const activePlayers = () => game.players.filter(q => !q.out);
+const level = () => AI_LEVEL[game.difficulty] || AI_LEVEL.normal;
+
+// ---------------------------------------------------------------- sound
+// Every effect is synthesised, so the page stays a single file with no assets.
+let audio = null;
+
+function initAudio() {
+  if (audio) return;
+  const Ctx = window.AudioContext || window.webkitAudioContext;
+  if (Ctx) audio = new Ctx();
+}
+
+function tone(freq, dur, type = 'triangle', peak = 0.12, delay = 0) {
+  if (!game.sound || !audio || audio.state !== 'running') return;
+  const t = audio.currentTime + delay;
+  const osc = audio.createOscillator();
+  const gain = audio.createGain();
+  osc.type = type;
+  osc.frequency.setValueAtTime(freq, t);
+  gain.gain.setValueAtTime(0.0001, t);
+  gain.gain.exponentialRampToValueAtTime(peak, t + 0.012);
+  gain.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+  osc.connect(gain).connect(audio.destination);
+  osc.start(t);
+  osc.stop(t + dur + 0.03);
+}
+
+function sfxStep()  { tone(320 + Math.random() * 60, 0.05, 'square', 0.04); }
+function sfxDice()  { tone(180, 0.09, 'sawtooth', 0.07); tone(240, 0.07, 'sawtooth', 0.05, 0.07); }
+function sfxCash()  { tone(660, 0.12, 'triangle', 0.1); tone(880, 0.16, 'triangle', 0.09, 0.09); }
+function sfxPay()   { tone(220, 0.16, 'sine', 0.11); tone(160, 0.2, 'sine', 0.09, 0.08); }
+function sfxDeed()  { tone(520, 0.1, 'triangle', 0.1); tone(780, 0.14, 'triangle', 0.09, 0.08); }
+function sfxGavel() { tone(140, 0.07, 'square', 0.12); tone(140, 0.09, 'square', 0.12, 0.13); }
+function sfxBust()  { [440, 349, 262, 196].forEach((f, i) => tone(f, 0.22, 'sawtooth', 0.08, i * 0.11)); }
+function sfxWin()   { [523, 659, 784, 1047].forEach((f, i) => tone(f, 0.3, 'triangle', 0.12, i * 0.11)); }
 
 // ---------------------------------------------------------------- setup
 function shuffled(deck) {
@@ -485,6 +549,8 @@ function newGame() {
   clearTimeout(game.aiTimer);
   const count = parseInt(playerCount.value, 10);
   const vsAi = opponents.value === 'ai';
+  game.difficulty = difficultySel.value;
+  game.sound = soundSel.value === 'on';
 
   game.players = Array.from({ length: count }, (_, i) => ({
     name: vsAi && i > 0 ? 'Computer ' + i : PLAYER_NAMES[i],
@@ -519,26 +585,49 @@ function newGame() {
 }
 
 // ---------------------------------------------------------------- movement
-function jumpTo(p, idx) {
-  if (idx <= p.at) { p.cash += SALARY; say('<b>' + p.name + '</b> passed Start, +' + money(SALARY) + '.'); }
-  p.at = idx;
+// The token walks the board a space at a time, which is also what pays the
+// salary: arriving at Start during the walk is the only way it is collected.
+function walk(p, steps, { back = false, multiplier = 1 } = {}) {
+  if (steps <= 0) return landOn(p, multiplier);
+
+  game.phase = 'moving';
   renderAll();
-  landOn(p);
+  let left = steps;
+
+  const hop = () => {
+    p.at = back ? (p.at - 1 + 40) % 40 : (p.at + 1) % 40;
+    if (!back && p.at === 0) {
+      p.cash += SALARY;
+      say('<b>' + p.name + '</b> passed Start, +' + money(SALARY) + '.');
+      sfxCash();
+    } else {
+      sfxStep();
+    }
+    renderAll();
+
+    if (--left > 0) setTimeout(hop, STEP_MS);
+    else setTimeout(() => landOn(p, multiplier), STEP_MS + 80);
+  };
+
+  setTimeout(hop, 140);
+}
+
+function advance(p, steps, multiplier = 1) {
+  walk(p, steps, { multiplier });
+}
+
+function jumpTo(p, idx) {
+  walk(p, (idx - p.at + 40) % 40);
 }
 
 function stepBack(p, n) {
-  p.at = (p.at - n + 40) % 40;
-  renderAll();
-  landOn(p);
+  walk(p, n, { back: true });
 }
 
 function nearestRail(p) {
   const rails = [5, 15, 25, 35];
-  let target = rails.find(r => r > p.at);
-  if (target === undefined) { target = 5; p.cash += SALARY; say('<b>' + p.name + '</b> passed Start, +' + money(SALARY) + '.'); }
-  p.at = target;
-  renderAll();
-  landOn(p, 2);                       // doubled railway rent
+  const target = rails.find(r => r > p.at);
+  walk(p, ((target === undefined ? 5 : target) - p.at + 40) % 40, { multiplier: 2 });
 }
 
 function sendToJail(p) {
@@ -555,6 +644,7 @@ function sendToJail(p) {
 function earn(p, amount) {
   p.cash += amount;
   say('<b>' + p.name + '</b> collects ' + money(amount) + '.');
+  sfxCash();
   settle();
 }
 
@@ -592,6 +682,7 @@ function repairs(p, perHouse, perHotel) {
 // what they hold passes to whoever they owed.
 function charge(p, amount, to) {
   if (amount <= 0 || p.out) return;
+  sfxPay();
   if (p.cash < amount) raiseFunds(p, amount);
 
   if (p.cash >= amount) {
@@ -636,6 +727,7 @@ function raiseFunds(p, target) {
 
 function bankrupt(p, creditor) {
   p.out = true;
+  sfxBust();
   const mine = idxOf(p);
 
   // Buildings always go back to the bank at half price; that cash, and every
@@ -702,6 +794,7 @@ function roll() {
   const a = 1 + Math.floor(Math.random() * 6);
   const b = 1 + Math.floor(Math.random() * 6);
   showDice(a, b);
+  sfxDice();
   const p = current();
 
   if (p.inJail) return jailRoll(p, a, b);
@@ -840,7 +933,7 @@ function offerPurchase(p, idx) {
   }
 
   if (isAi(p)) {
-    if (p.cash - tile.price >= 250 || tile.type !== 'prop') {
+    if (p.cash - tile.price >= level().cushion || tile.type !== 'prop') {
       buy(p, idx);
       return finishTurn();
     }
@@ -858,6 +951,7 @@ function buy(p, idx) {
   p.cash -= tile.price;
   game.owners[idx] = idxOf(p);
   say('<b>' + p.name + '</b> bought ' + tile.name + ' for ' + money(tile.price) + '.');
+  sfxDeed();
   renderAll();
 }
 
@@ -878,6 +972,8 @@ function finishTurn() {
       ? 'Everyone else is bankrupt · final cash ' + money(winner.cash)
       : 'Everyone went bankrupt';
     banner.hidden = false;
+    sfxWin();
+    clearSave();
     renderAll();
     return;
   }
@@ -984,6 +1080,7 @@ function aiValue(p, idx) {
     worth = tile.price * (countType(tile.type, mine) > 0 ? 1.15 : 0.85);
   }
 
+  worth *= level().auction;
   return Math.floor(Math.min(worth, Math.max(0, p.cash - 100)));
 }
 
@@ -1017,6 +1114,7 @@ function resolveAuction() {
     const winner = game.players[a.leader];
     winner.cash -= a.bid;
     game.owners[a.idx] = a.leader;
+    sfxGavel();
     say('<b>' + winner.name + '</b> wins ' + TILES[a.idx].name + ' at auction for ' + money(a.bid) + '.');
   } else if (a) {
     say('Nobody bid on ' + TILES[a.idx].name + '. It stays with the bank.');
@@ -1068,7 +1166,7 @@ function dealValue(playerIdx, idx) {
   if (tile.type === 'prop') {
     const group = TILES.map((t, k) => (t.group === tile.group ? k : -1)).filter(k => k >= 0);
     const held = group.filter(k => game.owners[k] === playerIdx).length;
-    if (held === group.length - 1) worth *= 1.8;        // completes a set
+    if (held === group.length - 1) worth *= level().set;   // completes a set
     else if (held > 0) worth *= 1.2;
   } else if (countType(tile.type, playerIdx) > 0) {
     worth *= 1.25;
@@ -1081,7 +1179,7 @@ function judgeTrade(partnerIdx, gives, gets, cash) {
   // cash > 0 means the proposer pays that much.
   const incoming = gives.reduce((s, i) => s + dealValue(partnerIdx, i), 0) + Math.max(0, cash);
   const outgoing = gets.reduce((s, i) => s + dealValue(partnerIdx, i), 0) + Math.max(0, -cash);
-  return { incoming, outgoing, ok: incoming >= outgoing * 1.15 };
+  return { incoming, outgoing, ok: incoming >= outgoing * level().premium };
 }
 
 function applyTrade(fromIdx, toIdx, gives, gets, cash) {
@@ -1216,6 +1314,7 @@ function build(idx) {
   game.houses[idx]++;
   say('<b>' + p.name + '</b> built ' + (game.houses[idx] === 5 ? 'a hotel' : 'a house') +
       ' on ' + TILES[idx].name + ' for ' + money(cost) + '.');
+  sfxDeed();
   renderAll();
 }
 
@@ -1264,7 +1363,7 @@ function aiBuild(p) {
       if (group.some(k => game.mortgaged[k] || game.houses[k] < game.houses[i])) continue;
 
       const cost = HOUSE_COST[tile.group];
-      if (p.cash - cost < 350) continue;
+      if (p.cash - cost < level().build) continue;
       if (cost < bestCost) { bestCost = cost; pick = i; }
     }
     if (pick < 0) break;
@@ -1274,6 +1373,81 @@ function aiBuild(p) {
     say('<b>' + p.name + '</b> built on ' + TILES[pick].name + '.');
   }
   renderAll();
+}
+
+// ---------------------------------------------------------------- saving
+// The game is written to storage whenever it is sitting at a stable point, so
+// closing the tab mid-turn loses at most the roll in progress.
+const STABLE = ['roll', 'jail', 'end'];
+
+function saveGame() {
+  if (!STABLE.includes(game.phase)) return;
+  try {
+    localStorage.setItem(SAVE_KEY, JSON.stringify({
+      players: game.players,
+      owners: game.owners,
+      houses: game.houses,
+      mortgaged: game.mortgaged,
+      turn: game.turn,
+      phase: game.phase,
+      doubles: game.doubles,
+      decks: game.decks,
+      difficulty: game.difficulty,
+    }));
+  } catch { /* storage full or blocked: not worth interrupting play */ }
+}
+
+function loadGame() {
+  let data;
+  try {
+    data = JSON.parse(localStorage.getItem(SAVE_KEY) || 'null');
+  } catch { return false; }
+  if (!data || !Array.isArray(data.players) || data.players.length < 2) return false;
+  if (data.players.filter(p => !p.out).length < 2) return false;
+
+  game.players = data.players;
+  game.owners = data.owners;
+  game.houses = data.houses;
+  game.mortgaged = data.mortgaged;
+  game.turn = data.turn;
+  game.phase = STABLE.includes(data.phase) ? data.phase : 'roll';
+  game.doubles = data.doubles || 0;
+  game.decks = data.decks || { chance: shuffled(CHANCE), chest: shuffled(CHEST) };
+  game.difficulty = data.difficulty || game.difficulty;
+  game.auction = null;
+  game.trade = null;
+
+  playerCount.value = String(game.players.length);
+  opponents.value = game.players.some(p => p.ai) ? 'ai' : 'human';
+  difficultySel.value = game.difficulty;
+
+  banner.hidden = true;
+  modal.hidden = true;
+  say('Resumed your last game. Start new game for a fresh one.');
+  renderAll();
+  maybeAi();
+  return true;
+}
+
+function clearSave() {
+  try { localStorage.removeItem(SAVE_KEY); } catch { /* nothing to clean up */ }
+}
+
+function savePrefs() {
+  try {
+    localStorage.setItem(PREFS_KEY, JSON.stringify({
+      difficulty: game.difficulty,
+      sound: game.sound,
+    }));
+  } catch { /* preferences are a nicety, never a blocker */ }
+}
+
+function loadPrefs() {
+  let prefs;
+  try { prefs = JSON.parse(localStorage.getItem(PREFS_KEY) || 'null'); } catch { return; }
+  if (!prefs) return;
+  if (prefs.difficulty) { game.difficulty = prefs.difficulty; difficultySel.value = prefs.difficulty; }
+  if (typeof prefs.sound === 'boolean') { game.sound = prefs.sound; soundSel.value = prefs.sound ? 'on' : 'off'; }
 }
 
 // ---------------------------------------------------------------- render
@@ -1292,6 +1466,8 @@ const endBtn = document.getElementById('endBtn');
 const newBtn = document.getElementById('newBtn');
 const playerCount = document.getElementById('playerCount');
 const opponents = document.getElementById('opponents');
+const difficultySel = document.getElementById('difficulty');
+const soundSel = document.getElementById('soundSel');
 const modal = document.getElementById('modal');
 const sheet = document.getElementById('sheet');
 const banner = document.getElementById('banner');
@@ -1435,9 +1611,13 @@ function renderAll() {
                         activePlayers().length > 1);
 
   if (turnName) {
-    turnName.textContent = game.phase === 'over' ? 'Game over' : p.name + "'s turn";
+    turnName.textContent = game.phase === 'over' ? 'Game over'
+      : game.phase === 'moving' ? p.name + ' is moving…'
+      : p.name + "'s turn";
     turnName.style.color = game.phase === 'over' ? '#86c2a5' : p.color;
   }
+
+  saveGame();
 }
 
 function renderDeeds() {
@@ -1709,8 +1889,21 @@ passBtn.addEventListener('click', () => {
   say('<b>' + current().name + '</b> sent ' + TILES[current().at].name + ' to auction.');
   startAuction(current().at);
 });
-newBtn.addEventListener('click', newGame);
-bannerBtn.addEventListener('click', newGame);
+newBtn.addEventListener('click', () => { clearSave(); newGame(); });
+bannerBtn.addEventListener('click', () => { clearSave(); newGame(); });
+
+difficultySel.addEventListener('change', () => { game.difficulty = difficultySel.value; savePrefs(); });
+soundSel.addEventListener('change', () => {
+  game.sound = soundSel.value === 'on';
+  savePrefs();
+  if (game.sound) sfxDeed();
+});
+
+// Browsers only allow audio after a gesture, so the context waits for one.
+document.addEventListener('pointerdown', () => {
+  initAudio();
+  if (audio && audio.state === 'suspended') audio.resume();
+});
 
 document.addEventListener('keydown', e => {
   if (e.target.tagName === 'SELECT' || e.target.tagName === 'BUTTON' || e.target.tagName === 'INPUT') return;
@@ -1722,7 +1915,8 @@ document.addEventListener('keydown', e => {
 });
 
 buildBoard();
-newGame();
+loadPrefs();
+if (!loadGame()) newGame();
 </script>
 </body>
 </html>

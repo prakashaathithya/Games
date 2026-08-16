@@ -2,7 +2,7 @@
 
 A property trading board game for two to four players, in the browser. Single HTML file, no build step and no libraries — the whole thing is DOM and CSS grid.
 
-Stages 1 to 3 are in. It plays a full game with cards, buildings, mortgages, jail, auctions and trading.
+All four stages are in. It plays a complete game: cards, buildings, mortgages, jail, auctions, trading, three computer difficulties, sound, and a game that survives closing the tab.
 
 ## What works now
 
@@ -26,13 +26,23 @@ Stages 1 to 3 are in. It plays a full game with cards, buildings, mortgages, jai
 
 **Debt.** A player who cannot cover a payment is made to raise the money first — buildings sold at half, then deeds mortgaged — and only goes bankrupt if that still is not enough. Everything then passes to whoever they owed: the cash they had, the deeds with their mortgages intact, any get-out-of-jail cards, and half the cost of every building, which goes back to the bank. A debt owed to the bank instead puts the deeds back on the market.
 
+**Moving.** Tokens walk the board a space at a time rather than teleporting, which is also how the salary is paid: arriving at Start during the walk is the only way it is collected, so a card that sends you backwards past it correctly pays nothing.
+
+**Sound.** Dice, footsteps, cash, payments, the auctioneer's gavel, bankruptcy and the win are all synthesised with the Web Audio API — no audio files. Switchable off, and the choice is remembered.
+
+**Difficulty.** Three computer levels, changeable mid-game:
+
+| | Easy | Normal | Hard |
+| --- | --- | --- | --- |
+| Cash kept back when buying | 420 | 250 | 120 |
+| Chases a lot at auction to | 0.8× | 1.0× | 1.25× its valuation |
+| Cash held before building | 620 | 350 | 200 |
+| Wants more than it gives, in a trade | 35% | 15% | 5% |
+| Values a deed completing a set at | 1.3× | 1.8× | 2.1× |
+
+**Save and resume.** The game writes itself to local storage whenever it is sitting at a stable point, and picks up where it left off when you come back. Closing the tab mid-turn costs at most the roll in progress. Start new game clears it.
+
 Names, prices and rents are our own. Base rents sit near a tenth of the purchase price, steeper than the traditional table, which keeps games short.
-
-## Not in yet
-
-| Stage | Adds |
-| --- | --- |
-| 4 | Token movement animation, sounds, save and resume, and AI difficulty levels |
 
 ## Controls
 
