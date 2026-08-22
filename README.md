@@ -13,6 +13,7 @@ Live at **https://games-dice.vercel.app**.
 | [2048](2048/) | `/2048` | Slide and merge, boards from 3×3 to 6×6, undo and per-size best scores. |
 | [Tetris](Tetris/) | `/Tetris` | Seven shapes into ten columns, with wall kicks, hold, ghost piece and T-spins. |
 | [Sudoku](Sudoku/) | `/Sudoku` | Puzzles generated in the browser and graded by the techniques they need. |
+| [Connect Four](ConnectFour/) | `/ConnectFour` | Four in a line down seven columns, against a searching computer or another person. |
 | [Ludo](Ludo/) | `/Ludo` | The four-player race board, against three computers or up to four people on one screen. |
 | [Business Board](Business/) | `/Business` | Property trading for two to four players, with cards, buildings, mortgages, jail, auctions and trading. |
 

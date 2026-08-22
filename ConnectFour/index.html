@@ -1,0 +1,854 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no, maximum-scale=1">
+<title>Connect Four</title>
+<style>
+  * { box-sizing: border-box; }
+  :root {
+    --bg: #12151c;
+    --panel: #1b212a;
+    --panel-2: #242c37;
+    --line: rgba(255,255,255,0.09);
+    --ink: #e9ecf2;
+    --muted: #8b95a3;
+    --accent: #e8b93c;
+    --red: #d8433f;
+    --yellow: #e8b93c;
+  }
+  html, body {
+    margin: 0; padding: 0; min-height: 100%;
+    background: var(--bg); color: var(--ink);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    -webkit-text-size-adjust: 100%;
+    -webkit-user-select: none; user-select: none;
+    overscroll-behavior: none;
+  }
+  body {
+    display: flex; flex-direction: column; align-items: center;
+    gap: 11px; padding: 12px;
+    padding-top: max(12px, env(safe-area-inset-top));
+    padding-bottom: max(12px, env(safe-area-inset-bottom));
+  }
+
+  /* ------------------------------------------------------------ head ---- */
+  #head {
+    width: min(94vw, 460px);
+    display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  }
+  #head h1 {
+    margin: 0; font-size: clamp(21px, 5.6vw, 30px); font-weight: 800;
+    letter-spacing: -0.02em; color: var(--accent);
+  }
+  .scores { display: flex; gap: 6px; }
+  .score {
+    background: var(--panel); border: 1px solid var(--line);
+    border-radius: 10px; padding: 6px 11px; text-align: center; min-width: 56px;
+  }
+  .score .label {
+    font-size: 9px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted);
+    white-space: nowrap;
+  }
+  .score .value { font-size: 17px; font-weight: 700; font-variant-numeric: tabular-nums; }
+
+  /* ----------------------------------------------------------- board ---- */
+  #wrap { position: relative; width: min(94vw, 58vh, 460px); }
+  #boardCv {
+    display: block; width: 100%; aspect-ratio: 7 / 7;
+    touch-action: manipulation; cursor: pointer;
+  }
+
+  #status {
+    width: min(94vw, 460px);
+    display: flex; align-items: center; gap: 9px;
+    font-size: 14px; font-weight: 600; min-height: 22px;
+  }
+  #status .dot {
+    width: 13px; height: 13px; border-radius: 50%;
+    background: var(--red); flex: none;
+    box-shadow: 0 0 0 2px rgba(255,255,255,0.09) inset;
+  }
+  #status .dot.yellow { background: var(--yellow); }
+  #status .dot.none { background: var(--muted); opacity: 0.4; }
+
+  #over {
+    position: absolute; inset: 0; z-index: 5;
+    display: grid; place-items: center; text-align: center;
+    background: rgba(18, 21, 28, 0.84);
+    border-radius: 14px; backdrop-filter: blur(3px);
+    padding: 18px;
+  }
+  #over[hidden] { display: none; }
+  #over h2 { margin: 0 0 6px; font-size: clamp(20px, 5.4vw, 28px); }
+  #over p { margin: 0 0 15px; color: var(--muted); font-size: 13px; line-height: 1.5; }
+  #over .row { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; }
+
+  /* ----------------------------------------------------------- tools ---- */
+  #tools {
+    width: min(94vw, 460px);
+    display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px;
+  }
+  button {
+    font: inherit; font-size: 14px; font-weight: 600;
+    padding: 11px 14px; min-height: 46px;
+    border-radius: 10px; border: 1px solid var(--line);
+    background: var(--panel-2); color: var(--ink); cursor: pointer;
+    touch-action: manipulation;
+  }
+  button:hover:not(:disabled) { background: #2e3846; }
+  button.primary { background: var(--accent); color: #211804; border-color: transparent; }
+  button:disabled { opacity: 0.4; cursor: default; }
+
+  #panel {
+    width: min(94vw, 460px);
+    background: var(--panel); border: 1px solid var(--line);
+    border-radius: 14px; padding: 12px 14px;
+  }
+  #panel h2 {
+    margin: 0 0 9px; font-size: 10px; letter-spacing: 0.14em;
+    text-transform: uppercase; color: var(--muted); font-weight: 650;
+  }
+  #setup { display: flex; gap: 10px; flex-wrap: wrap; }
+  #setup label {
+    flex: 1 1 108px; display: flex; flex-direction: column; gap: 6px;
+    font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted);
+  }
+  select {
+    font: inherit; font-size: 14px; width: 100%;
+    color: var(--ink); background: var(--panel-2);
+    border: 1px solid var(--line); border-radius: 9px; padding: 9px; min-height: 42px;
+  }
+  #hint { margin-top: 10px; font-size: 12px; color: var(--muted); line-height: 1.5; }
+</style>
+</head>
+<body>
+
+<div id="head">
+  <h1>Connect Four</h1>
+  <div class="scores">
+    <div class="score"><div class="label" id="lblA">Won</div><div class="value" id="outA">0</div></div>
+    <div class="score"><div class="label">Drawn</div><div class="value" id="outD">0</div></div>
+    <div class="score"><div class="label" id="lblB">Lost</div><div class="value" id="outB">0</div></div>
+  </div>
+</div>
+
+<div id="wrap">
+  <canvas id="boardCv"></canvas>
+  <div id="over" hidden>
+    <div>
+      <h2 id="overTitle">Red wins</h2>
+      <p id="overText">Four in a row.</p>
+      <div class="row">
+        <button id="overMain" class="primary" type="button">Play again</button>
+        <button id="overUndo" type="button">Undo last move</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="status"><span class="dot" id="turnDot"></span><span id="statusText">Your turn</span></div>
+
+<div id="tools">
+  <button id="undoBtn" type="button">Undo</button>
+  <button id="newBtn" type="button">New game</button>
+  <button id="soundBtn" type="button">Sound on</button>
+</div>
+
+<div id="panel">
+  <h2>Game</h2>
+  <div id="setup">
+    <label>Opponent
+      <select id="modeSel">
+        <option value="cpu" selected>Computer</option>
+        <option value="two">Two players</option>
+      </select>
+    </label>
+    <label>Difficulty
+      <select id="diffSel">
+        <option value="easy">Easy</option>
+        <option value="medium" selected>Medium</option>
+        <option value="hard">Hard</option>
+      </select>
+    </label>
+    <label>You are
+      <select id="sideSel">
+        <option value="1" selected>Red, first</option>
+        <option value="2">Yellow, second</option>
+      </select>
+    </label>
+  </div>
+  <div id="hint">Tap a column to drop, or use the arrow keys and Enter — the number keys 1 to 7 work too. Four in a line in any direction wins.</div>
+</div>
+
+<script type="module">
+// ---------------------------------------------------------------- board
+const COLS = 7, ROWS = 6, NEED = 4;
+const RED = 1, YELLOW = 2;
+
+const idx = (r, c) => r * COLS + c;
+
+// Every run of four on the board, worked out once. The search scores a
+// position by looking at what each of these windows holds.
+const WINDOWS = [];
+for (let r = 0; r < ROWS; r++) {
+  for (let c = 0; c < COLS; c++) {
+    for (const [dr, dc] of [[0, 1], [1, 0], [1, 1], [1, -1]]) {
+      const last_r = r + dr * (NEED - 1), last_c = c + dc * (NEED - 1);
+      if (last_r < 0 || last_r >= ROWS || last_c < 0 || last_c >= COLS) continue;
+      const cells = [];
+      for (let i = 0; i < NEED; i++) cells.push(idx(r + dr * i, c + dc * i));
+      WINDOWS.push(cells);
+    }
+  }
+}
+
+const ORDER = [3, 2, 4, 1, 5, 0, 6];       // the middle is worth more, so try it first
+const WIN = 100000;
+
+const RECORD_KEY = 'connect4.record.v1';
+const SAVE_KEY = 'connect4.save.v1';
+
+// ---------------------------------------------------------------- state
+const state = {
+  board: new Int8Array(ROWS * COLS),
+  heights: new Int8Array(COLS),            // discs already in each column
+  history: [],                             // columns played, in order
+  turn: RED,
+  mode: 'cpu',
+  difficulty: 'medium',
+  you: RED,
+  winner: 0,                               // 0 playing, 1 red, 2 yellow, 3 drawn
+  winLine: null,
+  thinking: false,
+  thinkId: 0,                              // bumped whenever a pending reply is stale
+  counted: null,                           // which tally the last result went into
+  falling: null,                           // { col, row, side, y, vy, bounced }
+  hover: -1,
+  sound: true,
+  record: null,
+};
+
+const other = side => (side === RED ? YELLOW : RED);
+const legal = c => state.heights[c] < ROWS;
+const full = () => state.heights.every(h => h >= ROWS);
+
+// ---------------------------------------------------------------- rules
+// A win only ever runs through the disc that was just played, so the check
+// walks out from that one square instead of sweeping the board.
+function lineThrough(board, r, c, side) {
+  for (const [dr, dc] of [[0, 1], [1, 0], [1, 1], [1, -1]]) {
+    const cells = [idx(r, c)];
+    for (const sign of [1, -1]) {
+      for (let i = 1; i < NEED; i++) {
+        const rr = r + dr * i * sign, cc = c + dc * i * sign;
+        if (rr < 0 || rr >= ROWS || cc < 0 || cc >= COLS) break;
+        if (board[idx(rr, cc)] !== side) break;
+        cells.push(idx(rr, cc));
+      }
+    }
+    if (cells.length >= NEED) return cells.sort((a, b) => a - b);
+  }
+  return null;
+}
+
+function place(col, side) {
+  const r = ROWS - 1 - state.heights[col];
+  state.board[idx(r, col)] = side;
+  state.heights[col]++;
+  return r;
+}
+
+function unplace(col) {
+  state.heights[col]--;
+  const r = ROWS - 1 - state.heights[col];
+  state.board[idx(r, col)] = 0;
+  return r;
+}
+
+// ---------------------------------------------------------------- search
+let nodes = 0, deadline = 0, timedOut = false;
+
+function evaluate(side) {
+  const b = state.board;
+  let score = 0;
+
+  for (const w of WINDOWS) {
+    let mine = 0, theirs = 0;
+    for (const i of w) {
+      const v = b[i];
+      if (v === side) mine++;
+      else if (v) theirs++;
+    }
+    if (mine && theirs) continue;          // a blocked window is worth nothing
+    if (mine === 3) score += 60;
+    else if (mine === 2) score += 12;
+    else if (mine === 1) score += 1;
+    else if (theirs === 3) score -= 70;    // a threat against you costs more than one for you
+    else if (theirs === 2) score -= 14;
+    else if (theirs === 1) score -= 1;
+  }
+
+  // Sitting in the middle column feeds more lines than sitting at the edge.
+  for (let r = 0; r < ROWS; r++) {
+    const v = b[idx(r, 3)];
+    if (v === side) score += 8;
+    else if (v) score -= 8;
+  }
+  return score;
+}
+
+function negamax(depth, alpha, beta, side, ply) {
+  if ((++nodes & 1023) === 0 && performance.now() > deadline) { timedOut = true; return 0; }
+  if (full()) return 0;
+  if (depth === 0) return evaluate(side);
+
+  let best = -Infinity;
+  for (const c of ORDER) {
+    if (!legal(c)) continue;
+    const r = place(c, side);
+    let score;
+    if (lineThrough(state.board, r, c, side)) score = WIN - ply;
+    else score = -negamax(depth - 1, -beta, -alpha, other(side), ply + 1);
+    unplace(c);
+
+    if (timedOut) return 0;
+    if (score > best) best = score;
+    if (best > alpha) alpha = best;
+    if (alpha >= beta) break;
+  }
+  return best;
+}
+
+function rootSearch(depth, side, first) {
+  let best = -Infinity, bestCol = -1;
+  const order = first >= 0 ? [first, ...ORDER.filter(c => c !== first)] : ORDER;
+
+  for (const c of order) {
+    if (!legal(c)) continue;
+    const r = place(c, side);
+    let score;
+    if (lineThrough(state.board, r, c, side)) score = WIN;
+    else score = -negamax(depth - 1, -Infinity, -best, other(side), 1);
+    unplace(c);
+
+    if (timedOut) break;
+    if (score > best) { best = score; bestCol = c; }
+  }
+  return { col: bestCol, score: best };
+}
+
+function chooseMove(side) {
+  const options = ORDER.filter(legal);
+  if (!options.length) return -1;
+
+  nodes = 0;
+  timedOut = false;
+
+  if (state.difficulty === 'easy') {
+    // Enough to take a win and to block one, and no more.
+    deadline = performance.now() + 60;
+    const found = rootSearch(2, side, -1);
+    if (Math.random() < 0.3) return options[Math.floor(Math.random() * options.length)];
+    return found.col >= 0 ? found.col : options[0];
+  }
+
+  if (state.difficulty === 'medium') {
+    deadline = performance.now() + 220;
+    const found = rootSearch(6, side, -1);
+    return found.col >= 0 ? found.col : options[0];
+  }
+
+  // Hard: go as deep as the budget allows, keeping the last finished answer.
+  deadline = performance.now() + 700;
+  let best = options[0];
+  for (let depth = 4; depth <= 14; depth++) {
+    const found = rootSearch(depth, side, best);
+    if (timedOut) break;
+    if (found.col >= 0) best = found.col;
+    if (found.score >= WIN - 50) break;    // a forced win: no need to look further
+    if (performance.now() > deadline) break;
+  }
+  return best;
+}
+
+// ---------------------------------------------------------------- turns
+function newGame() {
+  state.mode = modeSel.value;
+  state.difficulty = diffSel.value;
+  state.you = parseInt(sideSel.value, 10) === 2 ? YELLOW : RED;
+  state.board.fill(0);
+  state.heights.fill(0);
+  state.history = [];
+  state.turn = RED;
+  state.winner = 0;
+  state.winLine = null;
+  state.thinking = false;
+  state.thinkId++;
+  state.counted = null;
+  state.falling = null;
+  state.hover = -1;
+  state.record = loadRecord();
+
+  over.hidden = true;
+  diffSel.disabled = state.mode === 'two';
+  sideSel.disabled = state.mode === 'two';
+  showRecord();
+  showStatus();
+  save();
+  maybeThink();
+}
+
+function drop(col) {
+  if (state.winner || state.falling || state.thinking) return;
+  if (!legal(col)) return;
+
+  const row = ROWS - 1 - state.heights[col];
+  state.falling = { col, row, side: state.turn, y: -1.15, vy: 0, bounced: false };
+  sfxDrop();
+}
+
+function landed() {
+  const { col, side } = state.falling;
+  state.falling = null;
+
+  const r = place(col, side);
+  state.history.push(col);
+
+  const line = lineThrough(state.board, r, col, side);
+  if (line) {
+    state.winner = side;
+    state.winLine = line;
+    finish();
+  } else if (full()) {
+    state.winner = 3;
+    finish();
+  } else {
+    state.turn = other(side);
+    showStatus();
+    save();
+    maybeThink();
+  }
+}
+
+function maybeThink() {
+  if (state.winner || state.mode !== 'cpu') return;
+  if (state.turn === state.you) return;
+
+  state.thinking = true;
+  const id = ++state.thinkId;
+  showStatus();
+  // A beat before it answers, so the move reads as a reply rather than a reflex.
+  // The token means an undo or a new game during that beat cancels the reply.
+  setTimeout(() => {
+    if (id !== state.thinkId || !state.thinking) return;
+    const col = chooseMove(state.turn);
+    state.thinking = false;
+    if (col >= 0) drop(col);
+    else showStatus();
+  }, 160);
+}
+
+function finish() {
+  const name = state.mode === 'cpu' ? state.difficulty : 'two';
+  const first = state.mode === 'cpu' ? state.you : RED;
+  const field = state.winner === 3 ? 'd' : state.winner === first ? 'w' : 'l';
+
+  state.record[name][field]++;
+  state.counted = { name, field };         // so an undo can take it back off
+  saveRecord();
+  showRecord();
+  clearSave();
+
+  const naming = state.mode === 'cpu'
+    ? (state.winner === state.you ? 'You win' : 'The computer wins')
+    : (state.winner === RED ? 'Red wins' : 'Yellow wins');
+
+  overTitle.textContent = state.winner === 3 ? 'A draw' : naming;
+  overText.textContent = state.winner === 3
+    ? 'The board filled up with nobody in line.'
+    : 'Four in a row, in ' + state.history.length + ' moves.';
+  over.hidden = false;
+  showStatus();
+  if (state.winner === 3) sfxDraw();
+  else if (state.mode === 'two' || state.winner === state.you) sfxWin();
+  else sfxLose();
+}
+
+function undo() {
+  if (state.falling) return;
+  state.thinking = false;
+  state.thinkId++;
+
+  // Taking back a finished game takes the result off the tally with it.
+  if (state.counted) {
+    state.record[state.counted.name][state.counted.field]--;
+    state.counted = null;
+    saveRecord();
+    showRecord();
+  }
+
+  // Against the computer, taking back one move would only hand the turn
+  // straight back to it, so both come off.
+  let take = 1;
+  if (state.mode === 'cpu' && !state.winner) take = state.history.length >= 2 ? 2 : 1;
+  else if (state.mode === 'cpu' && state.winner) take = state.winner === state.you ? 1 : 2;
+  take = Math.min(take, state.history.length);
+  if (!take) return;
+
+  for (let i = 0; i < take; i++) unplace(state.history.pop());
+
+  state.winner = 0;
+  state.winLine = null;
+  state.turn = state.history.length % 2 === 0 ? RED : YELLOW;
+  over.hidden = true;
+  showStatus();
+  save();
+
+  // If undoing left the computer to play, let it answer.
+  if (state.mode === 'cpu' && state.turn !== state.you) maybeThink();
+}
+
+// ---------------------------------------------------------------- storage
+function blankRecord() {
+  return {
+    easy: { w: 0, l: 0, d: 0 },
+    medium: { w: 0, l: 0, d: 0 },
+    hard: { w: 0, l: 0, d: 0 },
+    two: { w: 0, l: 0, d: 0 },
+  };
+}
+
+function loadRecord() {
+  let data;
+  try { data = JSON.parse(localStorage.getItem(RECORD_KEY) || 'null'); } catch { data = null; }
+  const blank = blankRecord();
+  if (!data) return blank;
+  for (const key of Object.keys(blank)) {
+    const got = data[key];
+    if (got && typeof got === 'object') {
+      blank[key] = { w: got.w | 0, l: got.l | 0, d: got.d | 0 };
+    }
+  }
+  return blank;
+}
+
+function saveRecord() {
+  try { localStorage.setItem(RECORD_KEY, JSON.stringify(state.record)); } catch { /* ignore */ }
+}
+
+function save() {
+  if (state.winner) return;
+  try {
+    localStorage.setItem(SAVE_KEY, JSON.stringify({
+      history: state.history, mode: state.mode,
+      difficulty: state.difficulty, you: state.you,
+    }));
+  } catch { /* storage blocked: play on without it */ }
+}
+
+function restore() {
+  let data;
+  try { data = JSON.parse(localStorage.getItem(SAVE_KEY) || 'null'); } catch { return false; }
+  if (!data || !Array.isArray(data.history) || !data.history.length) return false;
+  if (data.history.some(c => !(c >= 0 && c < COLS))) return false;
+
+  modeSel.value = data.mode === 'two' ? 'two' : 'cpu';
+  diffSel.value = ['easy', 'medium', 'hard'].includes(data.difficulty) ? data.difficulty : 'medium';
+  sideSel.value = data.you === YELLOW ? '2' : '1';
+  newGame();
+
+  for (const col of data.history) {
+    if (!legal(col)) break;
+    const side = state.turn;
+    const r = place(col, side);
+    state.history.push(col);
+    const line = lineThrough(state.board, r, col, side);
+    state.turn = other(side);
+    if (line) { state.winner = side; state.winLine = line; break; }
+  }
+  state.thinking = false;
+  state.thinkId++;                         // cancel the reply newGame lined up
+  showStatus();
+  maybeThink();
+  return true;
+}
+
+function clearSave() {
+  try { localStorage.removeItem(SAVE_KEY); } catch { /* nothing to clean up */ }
+}
+
+// ---------------------------------------------------------------- sound
+let audio = null;
+
+function initAudio() {
+  if (audio) return;
+  const Ctx = window.AudioContext || window.webkitAudioContext;
+  if (Ctx) audio = new Ctx();
+}
+
+function tone(freq, dur, type = 'triangle', peak = 0.07, delay = 0) {
+  if (!state.sound || !audio || audio.state !== 'running') return;
+  const t = audio.currentTime + delay;
+  const osc = audio.createOscillator();
+  const gain = audio.createGain();
+  osc.type = type;
+  osc.frequency.setValueAtTime(freq, t);
+  gain.gain.setValueAtTime(0.0001, t);
+  gain.gain.exponentialRampToValueAtTime(peak, t + 0.008);
+  gain.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+  osc.connect(gain).connect(audio.destination);
+  osc.start(t);
+  osc.stop(t + dur + 0.03);
+}
+
+function sfxDrop()  { tone(260, 0.05, 'square', 0.03); }
+function sfxLand()  { tone(120, 0.09, 'triangle', 0.06); }
+function sfxWin()   { [523, 659, 784, 1047].forEach((f, i) => tone(f, 0.26, 'triangle', 0.08, i * 0.09)); }
+function sfxLose()  { [392, 311, 233].forEach((f, i) => tone(f, 0.26, 'sawtooth', 0.07, i * 0.12)); }
+function sfxDraw()  { [440, 440].forEach((f, i) => tone(f, 0.2, 'triangle', 0.06, i * 0.18)); }
+
+// ---------------------------------------------------------------- drawing
+const cv = document.getElementById('boardCv');
+const ctx = cv.getContext('2d');
+const over = document.getElementById('over');
+const overTitle = document.getElementById('overTitle');
+const overText = document.getElementById('overText');
+const overMain = document.getElementById('overMain');
+const overUndo = document.getElementById('overUndo');
+const statusText = document.getElementById('statusText');
+const turnDot = document.getElementById('turnDot');
+const undoBtn = document.getElementById('undoBtn');
+const newBtn = document.getElementById('newBtn');
+const soundBtn = document.getElementById('soundBtn');
+const modeSel = document.getElementById('modeSel');
+const diffSel = document.getElementById('diffSel');
+const sideSel = document.getElementById('sideSel');
+const lblA = document.getElementById('lblA');
+const lblB = document.getElementById('lblB');
+const outA = document.getElementById('outA');
+const outB = document.getElementById('outB');
+const outD = document.getElementById('outD');
+
+const COLOUR = { 1: '#d8433f', 2: '#e8b93c' };
+const SHADE = { 1: '#a12f2c', 2: '#a9832a' };
+
+function fit() {
+  const dpr = Math.min(3, window.devicePixelRatio || 1);
+  const rect = cv.getBoundingClientRect();
+  const w = Math.max(1, Math.round(rect.width * dpr));
+  const h = Math.max(1, Math.round(rect.height * dpr));
+  if (cv.width !== w || cv.height !== h) { cv.width = w; cv.height = h; }
+  return { w, h, s: w / COLS };
+}
+
+function disc(x, y, r, side, alpha = 1) {
+  ctx.globalAlpha = alpha;
+  const g = ctx.createLinearGradient(x - r, y - r, x + r, y + r);
+  g.addColorStop(0, COLOUR[side]);
+  g.addColorStop(1, SHADE[side]);
+  ctx.fillStyle = g;
+  ctx.beginPath();
+  ctx.arc(x, y, r, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.globalAlpha = alpha * 0.5;
+  ctx.strokeStyle = 'rgba(255,255,255,0.35)';
+  ctx.lineWidth = Math.max(1, r * 0.09);
+  ctx.beginPath();
+  ctx.arc(x, y, r * 0.72, Math.PI * 0.85, Math.PI * 1.6);
+  ctx.stroke();
+  ctx.globalAlpha = 1;
+}
+
+function roundRect(x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + w, y, x + w, y + h, r);
+  ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r);
+  ctx.arcTo(x, y, x + w, y, r);
+  ctx.closePath();
+}
+
+function render() {
+  const { w, h, s } = fit();
+  const top = s;                           // one row of headroom for the hovering disc
+  const rad = s * 0.40;
+
+  ctx.clearRect(0, 0, w, h);
+
+  // The holes are dark all the way through; the discs are drawn behind the
+  // board and show through them, which is how a real one looks.
+  ctx.fillStyle = '#141922';
+  roundRect(0, top, w, h - top, s * 0.16);
+  ctx.fill();
+
+  for (let r = 0; r < ROWS; r++) {
+    for (let c = 0; c < COLS; c++) {
+      const v = state.board[idx(r, c)];
+      if (v) disc(c * s + s / 2, top + r * s + s / 2, rad, v);
+    }
+  }
+  if (state.falling) {
+    const f = state.falling;
+    disc(f.col * s + s / 2, top + (f.y + 0.5) * s, rad, f.side);
+  }
+
+  // The board itself: one path of the outline plus every hole, filled with the
+  // even-odd rule so the holes come out as holes.
+  ctx.fillStyle = '#2c4f9e';
+  ctx.beginPath();
+  roundRect(0, top, w, h - top, s * 0.16);
+  for (let r = 0; r < ROWS; r++) {
+    for (let c = 0; c < COLS; c++) {
+      ctx.moveTo(c * s + s / 2 + rad, top + r * s + s / 2);
+      ctx.arc(c * s + s / 2, top + r * s + s / 2, rad, 0, Math.PI * 2);
+    }
+  }
+  ctx.fill('evenodd');
+
+  // The disc waiting above the column under the cursor.
+  if (!state.winner && !state.falling && !state.thinking
+      && state.hover >= 0 && legal(state.hover)
+      && (state.mode === 'two' || state.turn === state.you)) {
+    disc(state.hover * s + s / 2, top / 2, rad, state.turn, 0.55);
+  }
+
+  if (state.winLine) {
+    const pulse = 0.55 + 0.45 * Math.sin(performance.now() / 220);
+    ctx.strokeStyle = 'rgba(255,255,255,' + pulse.toFixed(3) + ')';
+    ctx.lineWidth = Math.max(2, s * 0.07);
+    for (const i of state.winLine) {
+      const r = Math.floor(i / COLS), c = i % COLS;
+      ctx.beginPath();
+      ctx.arc(c * s + s / 2, top + r * s + s / 2, rad * 0.78, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+  }
+}
+
+function showStatus() {
+  const turn = state.turn;
+  turnDot.className = 'dot' + (state.winner ? ' none' : turn === YELLOW ? ' yellow' : '');
+
+  if (state.winner === 3) statusText.textContent = 'Drawn — the board is full.';
+  else if (state.winner) {
+    statusText.textContent = state.mode === 'cpu'
+      ? (state.winner === state.you ? 'You win.' : 'The computer wins.')
+      : (state.winner === RED ? 'Red wins.' : 'Yellow wins.');
+  } else if (state.thinking) statusText.textContent = 'The computer is thinking…';
+  else if (state.mode === 'two') statusText.textContent = (turn === RED ? 'Red' : 'Yellow') + ' to play';
+  else statusText.textContent = turn === state.you ? 'Your turn' : 'The computer plays';
+
+  undoBtn.disabled = !state.history.length || !!state.falling;
+  overUndo.disabled = !state.history.length;
+}
+
+function showRecord() {
+  const bucket = state.mode === 'two' ? state.record.two : state.record[state.difficulty];
+  lblA.textContent = state.mode === 'two' ? 'Red' : 'Won';
+  lblB.textContent = state.mode === 'two' ? 'Yellow' : 'Lost';
+  outA.textContent = String(bucket.w);
+  outB.textContent = String(bucket.l);
+  outD.textContent = String(bucket.d);
+}
+
+// ---------------------------------------------------------------- the loop
+let last = 0;
+function frame(now) {
+  const dt = Math.min(64, last ? now - last : 16) / 1000;
+  last = now;
+
+  const f = state.falling;
+  if (f) {
+    f.vy += 46 * dt;                       // rows per second, per second
+    f.y += f.vy * dt;
+    if (f.y >= f.row) {
+      if (!f.bounced && f.vy > 6) {        // one small bounce, then it settles
+        f.y = f.row;
+        f.vy = -f.vy * 0.22;
+        f.bounced = true;
+      } else {
+        f.y = f.row;
+        sfxLand();
+        landed();
+      }
+    }
+  }
+
+  render();
+  requestAnimationFrame(frame);
+}
+
+// ---------------------------------------------------------------- input
+function columnAt(clientX) {
+  const rect = cv.getBoundingClientRect();
+  const c = Math.floor(((clientX - rect.left) / rect.width) * COLS);
+  return c >= 0 && c < COLS ? c : -1;
+}
+
+function playable() {
+  if (state.winner || state.falling || state.thinking) return false;
+  return state.mode === 'two' || state.turn === state.you;
+}
+
+cv.addEventListener('pointermove', e => {
+  state.hover = playable() ? columnAt(e.clientX) : -1;
+});
+cv.addEventListener('pointerleave', () => { state.hover = -1; });
+
+cv.addEventListener('pointerdown', e => {
+  if (!playable()) return;
+  const c = columnAt(e.clientX);
+  if (c >= 0) { state.hover = c; drop(c); }
+});
+
+document.addEventListener('keydown', e => {
+  if (e.target.tagName === 'SELECT') return;
+  if (e.target.tagName === 'BUTTON' && (e.key === ' ' || e.key === 'Enter')) return;
+
+  if (e.key >= '1' && e.key <= '7') {
+    e.preventDefault();
+    if (playable()) drop(parseInt(e.key, 10) - 1);
+    return;
+  }
+  if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+    e.preventDefault();
+    const step = e.key === 'ArrowLeft' ? -1 : 1;
+    const from = state.hover < 0 ? 3 : state.hover;
+    state.hover = (from + step + COLS) % COLS;
+    return;
+  }
+  if (e.key === 'Enter' || e.key === ' ' || e.key === 'ArrowDown') {
+    e.preventDefault();
+    if (playable() && state.hover >= 0) drop(state.hover);
+    return;
+  }
+  if (e.key === 'u' || e.key === 'U') undo();
+});
+
+undoBtn.addEventListener('click', undo);
+overUndo.addEventListener('click', undo);
+newBtn.addEventListener('click', () => { clearSave(); newGame(); });
+overMain.addEventListener('click', () => { clearSave(); newGame(); });
+
+soundBtn.addEventListener('click', () => {
+  state.sound = !state.sound;
+  soundBtn.textContent = state.sound ? 'Sound on' : 'Sound off';
+});
+
+modeSel.addEventListener('change', () => { clearSave(); newGame(); });
+diffSel.addEventListener('change', () => { clearSave(); newGame(); });
+sideSel.addEventListener('change', () => { clearSave(); newGame(); });
+
+document.addEventListener('pointerdown', () => {
+  initAudio();
+  if (audio && audio.state === 'suspended') audio.resume();
+});
+
+if (!restore()) newGame();
+requestAnimationFrame(frame);
+</script>
+
+</body>
+</html>
