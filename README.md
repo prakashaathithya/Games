@@ -14,6 +14,7 @@ Live at **https://games-dice.vercel.app**.
 | [Tetris](Tetris/) | `/Tetris` | Seven shapes into ten columns, with wall kicks, hold, ghost piece and T-spins. |
 | [Sudoku](Sudoku/) | `/Sudoku` | Puzzles generated in the browser and graded by the techniques they need. |
 | [Connect Four](ConnectFour/) | `/ConnectFour` | Four in a line down seven columns, against a searching computer or another person. |
+| [Reversi](Reversi/) | `/Reversi` | Othello: trap a line and turn it over, with an endgame the computer plays out exactly. |
 | [Ludo](Ludo/) | `/Ludo` | The four-player race board, against three computers or up to four people on one screen. |
 | [Business Board](Business/) | `/Business` | Property trading for two to four players, with cards, buildings, mortgages, jail, auctions and trading. |
 

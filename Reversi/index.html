@@ -1,0 +1,882 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no, maximum-scale=1">
+<title>Reversi</title>
+<style>
+  * { box-sizing: border-box; }
+  :root {
+    --bg: #12151c;
+    --panel: #1b212a;
+    --panel-2: #242c37;
+    --line: rgba(255,255,255,0.09);
+    --ink: #e9ecf2;
+    --muted: #8b95a3;
+    --accent: #63b98a;
+  }
+  html, body {
+    margin: 0; padding: 0; min-height: 100%;
+    background: var(--bg); color: var(--ink);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    -webkit-text-size-adjust: 100%;
+    -webkit-user-select: none; user-select: none;
+    overscroll-behavior: none;
+  }
+  body {
+    display: flex; flex-direction: column; align-items: center;
+    gap: 11px; padding: 12px;
+    padding-top: max(12px, env(safe-area-inset-top));
+    padding-bottom: max(12px, env(safe-area-inset-bottom));
+  }
+
+  /* ------------------------------------------------------------ head ---- */
+  #head {
+    width: min(94vw, 460px);
+    display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  }
+  #head h1 {
+    margin: 0; font-size: clamp(22px, 6vw, 32px); font-weight: 800;
+    letter-spacing: -0.02em; color: var(--accent);
+  }
+  .scores { display: flex; gap: 7px; }
+  .score {
+    background: var(--panel); border: 1px solid var(--line);
+    border-radius: 10px; padding: 6px 12px; text-align: center; min-width: 68px;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .score.turn { border-color: rgba(99,185,138,0.75); background: #202a2b; }
+  .score .pip {
+    width: 15px; height: 15px; border-radius: 50%; flex: none;
+    background: #14181f; border: 1px solid rgba(255,255,255,0.25);
+  }
+  .score .pip.white { background: #eef1f5; border-color: rgba(0,0,0,0.3); }
+  .score .value { font-size: 18px; font-weight: 700; font-variant-numeric: tabular-nums; }
+
+  /* ----------------------------------------------------------- board ---- */
+  #wrap { position: relative; width: min(94vw, 62vh, 460px); }
+  #boardCv {
+    display: block; width: 100%; aspect-ratio: 1;
+    touch-action: manipulation; cursor: pointer;
+    border-radius: 12px;
+  }
+
+  #status {
+    width: min(94vw, 460px);
+    font-size: 14px; font-weight: 600; min-height: 22px; line-height: 1.4;
+  }
+  #status .quiet { color: var(--muted); font-weight: 500; }
+
+  #over {
+    position: absolute; inset: 0; z-index: 5;
+    display: grid; place-items: center; text-align: center;
+    background: rgba(18, 21, 28, 0.84);
+    border-radius: 12px; backdrop-filter: blur(3px);
+    padding: 18px;
+  }
+  #over[hidden] { display: none; }
+  #over h2 { margin: 0 0 6px; font-size: clamp(20px, 5.4vw, 28px); }
+  #over p { margin: 0 0 15px; color: var(--muted); font-size: 13px; line-height: 1.5; }
+  #over .row { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; }
+
+  /* ----------------------------------------------------------- tools ---- */
+  #tools {
+    width: min(94vw, 460px);
+    display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px;
+  }
+  button {
+    font: inherit; font-size: 14px; font-weight: 600;
+    padding: 11px 14px; min-height: 46px;
+    border-radius: 10px; border: 1px solid var(--line);
+    background: var(--panel-2); color: var(--ink); cursor: pointer;
+    touch-action: manipulation;
+  }
+  button:hover:not(:disabled) { background: #2e3846; }
+  button.primary { background: var(--accent); color: #082014; border-color: transparent; }
+  button:disabled { opacity: 0.4; cursor: default; }
+
+  #panel {
+    width: min(94vw, 460px);
+    background: var(--panel); border: 1px solid var(--line);
+    border-radius: 14px; padding: 12px 14px;
+  }
+  #panel h2 {
+    margin: 0 0 9px; font-size: 10px; letter-spacing: 0.14em;
+    text-transform: uppercase; color: var(--muted); font-weight: 650;
+  }
+  #setup {
+    display: grid; gap: 10px;
+    grid-template-columns: repeat(auto-fit, minmax(96px, 1fr));
+  }
+  #setup label {
+    display: flex; flex-direction: column; gap: 6px;
+    font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted);
+  }
+  select {
+    font: inherit; font-size: 14px; width: 100%;
+    color: var(--ink); background: var(--panel-2);
+    border: 1px solid var(--line); border-radius: 9px; padding: 9px; min-height: 42px;
+  }
+  #hint { margin-top: 10px; font-size: 12px; color: var(--muted); line-height: 1.5; }
+</style>
+</head>
+<body>
+
+<div id="head">
+  <h1>Reversi</h1>
+  <div class="scores">
+    <div class="score" id="scoreBlack"><span class="pip"></span><span class="value" id="outBlack">2</span></div>
+    <div class="score" id="scoreWhite"><span class="pip white"></span><span class="value" id="outWhite">2</span></div>
+  </div>
+</div>
+
+<div id="wrap">
+  <canvas id="boardCv"></canvas>
+  <div id="over" hidden>
+    <div>
+      <h2 id="overTitle">Black wins</h2>
+      <p id="overText">38 to 26.</p>
+      <div class="row">
+        <button id="overMain" class="primary" type="button">Play again</button>
+        <button id="overUndo" type="button">Undo last move</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="status"><span id="statusText">Black to play</span></div>
+
+<div id="tools">
+  <button id="undoBtn" type="button">Undo</button>
+  <button id="newBtn" type="button">New game</button>
+  <button id="soundBtn" type="button">Sound on</button>
+</div>
+
+<div id="panel">
+  <h2>Game</h2>
+  <div id="setup">
+    <label>Opponent
+      <select id="modeSel">
+        <option value="cpu" selected>Computer</option>
+        <option value="two">Two players</option>
+      </select>
+    </label>
+    <label>Difficulty
+      <select id="diffSel">
+        <option value="easy">Easy</option>
+        <option value="medium" selected>Medium</option>
+        <option value="hard">Hard</option>
+      </select>
+    </label>
+    <label>You are
+      <select id="sideSel">
+        <option value="1" selected>Black, first</option>
+        <option value="2">White, second</option>
+      </select>
+    </label>
+    <label>Legal moves
+      <select id="hintSel">
+        <option value="on" selected>Marked</option>
+        <option value="off">Hidden</option>
+      </select>
+    </label>
+  </div>
+  <div id="hint">Play on a square that traps a line of your opponent's discs between the one you lay and another of yours. Every disc in that line turns over. No legal move means you pass; when neither side can move, whoever has more discs wins.</div>
+</div>
+
+<script type="module">
+// ---------------------------------------------------------------- board
+const N = 8;
+const BLACK = 1, WHITE = 2;
+const DIRS = [[-1,-1],[-1,0],[-1,1],[0,-1],[0,1],[1,-1],[1,0],[1,1]];
+
+const idx = (r, c) => r * N + c;
+const other = side => (side === BLACK ? WHITE : BLACK);
+
+// A corner is worth having, the square diagonally inside it is worth avoiding,
+// and everything else is somewhere in between.
+const WEIGHTS = [
+  120, -20,  20,   5,   5,  20, -20, 120,
+  -20, -40,  -5,  -5,  -5,  -5, -40, -20,
+   20,  -5,  15,   3,   3,  15,  -5,  20,
+    5,  -5,   3,   3,   3,   3,  -5,   5,
+    5,  -5,   3,   3,   3,   3,  -5,   5,
+   20,  -5,  15,   3,   3,  15,  -5,  20,
+  -20, -40,  -5,  -5,  -5,  -5, -40, -20,
+  120, -20,  20,   5,   5,  20, -20, 120,
+];
+const SEARCH_ORDER = Array.from({ length: N * N }, (_, i) => i)
+  .sort((a, b) => WEIGHTS[b] - WEIGHTS[a]);
+
+const ENDGAME = 13;          // empties at which the search just plays it out
+const SAVE_KEY = 'reversi.save.v1';
+
+// ---------------------------------------------------------------- state
+const state = {
+  board: new Int8Array(N * N),
+  turn: BLACK,
+  mode: 'cpu',
+  difficulty: 'medium',
+  you: BLACK,
+  hints: true,
+  history: [],                 // { board, turn } before each move
+  moves: new Map(),            // legal squares for the side to play, to their flips
+  lastMove: -1,
+  passed: null,                // the side that just had to pass, for the status line
+  over: false,
+  thinking: false,
+  thinkId: 0,
+  anim: null,                  // { placed, flips, side, t }
+  hover: -1,
+  sound: true,
+};
+
+// ---------------------------------------------------------------- rules
+// The discs a move would turn over. An empty list means the move is illegal,
+// which is also how the legal move list gets built.
+function flipsFor(board, at, side) {
+  if (board[at] !== 0) return null;
+  const r0 = Math.floor(at / N), c0 = at % N;
+  const foe = other(side);
+  let found = null;
+
+  for (const [dr, dc] of DIRS) {
+    let r = r0 + dr, c = c0 + dc;
+    const run = [];
+    while (r >= 0 && r < N && c >= 0 && c < N && board[idx(r, c)] === foe) {
+      run.push(idx(r, c));
+      r += dr; c += dc;
+    }
+    if (!run.length) continue;
+    if (r < 0 || r >= N || c < 0 || c >= N) continue;
+    if (board[idx(r, c)] !== side) continue;
+    if (!found) found = [];
+    for (const i of run) found.push(i);
+  }
+  return found;
+}
+
+function movesFor(board, side) {
+  const out = new Map();
+  for (let i = 0; i < N * N; i++) {
+    const flips = flipsFor(board, i, side);
+    if (flips) out.set(i, flips);
+  }
+  return out;
+}
+
+function make(board, at, side, flips) {
+  board[at] = side;
+  for (const i of flips) board[i] = side;
+}
+
+function unmake(board, at, side, flips) {
+  board[at] = 0;
+  const foe = other(side);
+  for (const i of flips) board[i] = foe;
+}
+
+function counts(board) {
+  let black = 0, white = 0;
+  for (let i = 0; i < N * N; i++) {
+    if (board[i] === BLACK) black++;
+    else if (board[i] === WHITE) white++;
+  }
+  return { black, white, empty: N * N - black - white };
+}
+
+// ---------------------------------------------------------------- search
+let nodes = 0, deadline = 0, timedOut = false;
+
+function discScore(board, side) {
+  const { black, white } = counts(board);
+  const mine = side === BLACK ? black : white;
+  const theirs = side === BLACK ? white : black;
+  return mine - theirs;
+}
+
+// Early on, where the discs sit matters far more than how many there are; by
+// the end it is only how many there are.
+function evaluate(board, side) {
+  const { black, white, empty } = counts(board);
+  const foe = other(side);
+
+  if (empty <= ENDGAME) {
+    return ((side === BLACK ? black - white : white - black)) * 100;
+  }
+
+  let positional = 0, mine = 0, theirs = 0;
+  for (let i = 0; i < N * N; i++) {
+    const v = board[i];
+    if (!v) continue;
+    if (v === side) { positional += WEIGHTS[i]; mine++; }
+    else { positional -= WEIGHTS[i]; theirs++; }
+  }
+
+  const myMoves = movesFor(board, side).size;
+  const theirMoves = movesFor(board, foe).size;
+  const mobility = 10 * (myMoves - theirMoves);
+
+  // Being ahead on discs in the middle game usually means the wrong thing, so
+  // it is worth only a little, and only once the board is filling up.
+  const material = empty < 24 ? 2 * (mine - theirs) : 0;
+
+  return positional + mobility + material;
+}
+
+function negamax(board, side, depth, alpha, beta, passed) {
+  if ((++nodes & 511) === 0 && performance.now() > deadline) { timedOut = true; return 0; }
+
+  const moves = movesFor(board, side);
+  if (!moves.size) {
+    if (passed) return discScore(board, side) * 1000;   // nobody can move: the game is over
+    return -negamax(board, other(side), depth, -beta, -alpha, true);
+  }
+  if (depth <= 0) return evaluate(board, side);
+
+  let best = -Infinity;
+  for (const at of SEARCH_ORDER) {
+    const flips = moves.get(at);
+    if (!flips) continue;
+    make(board, at, side, flips);
+    const score = -negamax(board, other(side), depth - 1, -beta, -alpha, false);
+    unmake(board, at, side, flips);
+
+    if (timedOut) return 0;
+    if (score > best) best = score;
+    if (best > alpha) alpha = best;
+    if (alpha >= beta) break;
+  }
+  return best;
+}
+
+function rootSearch(board, side, depth, first) {
+  const moves = movesFor(board, side);
+  if (!moves.size) return { at: -1, score: 0 };
+
+  const order = first >= 0
+    ? [first, ...SEARCH_ORDER.filter(i => i !== first)]
+    : SEARCH_ORDER;
+
+  let best = -Infinity, bestAt = -1;
+  for (const at of order) {
+    const flips = moves.get(at);
+    if (!flips) continue;
+    make(board, at, side, flips);
+    const score = -negamax(board, other(side), depth - 1, -Infinity, -best, false);
+    unmake(board, at, side, flips);
+
+    if (timedOut) break;
+    if (score > best) { best = score; bestAt = at; }
+  }
+  return { at: bestAt, score: best };
+}
+
+function chooseMove(side) {
+  const board = state.board;
+  const moves = movesFor(board, side);
+  if (!moves.size) return -1;
+  const options = [...moves.keys()];
+
+  nodes = 0;
+  timedOut = false;
+
+  if (state.difficulty === 'easy') {
+    // It looks one move ahead and takes a corner when one is going, but it is
+    // happy enough to throw a game away.
+    if (Math.random() < 0.35) return options[Math.floor(Math.random() * options.length)];
+    deadline = performance.now() + 80;
+    const found = rootSearch(board, side, 2, -1);
+    return found.at >= 0 ? found.at : options[0];
+  }
+
+  if (state.difficulty === 'medium') {
+    deadline = performance.now() + 300;
+    const found = rootSearch(board, side, 4, -1);
+    return found.at >= 0 ? found.at : options[0];
+  }
+
+  const empty = counts(board).empty;
+  deadline = performance.now() + 900;
+
+  // Close to the end there is no need to guess: play the rest of the game out.
+  if (empty <= ENDGAME) {
+    const found = rootSearch(board, side, empty + 1, -1);
+    if (found.at >= 0 && !timedOut) return found.at;
+  }
+
+  let best = options[0];
+  for (let depth = 3; depth <= 9; depth++) {
+    const found = rootSearch(board, side, depth, best);
+    if (timedOut) break;
+    if (found.at >= 0) best = found.at;
+    if (performance.now() > deadline) break;
+  }
+  return best;
+}
+
+// ---------------------------------------------------------------- turns
+function newGame() {
+  state.mode = modeSel.value;
+  state.difficulty = diffSel.value;
+  state.you = parseInt(sideSel.value, 10) === 2 ? WHITE : BLACK;
+  state.hints = hintSel.value === 'on';
+
+  state.board.fill(0);
+  state.board[idx(3, 3)] = WHITE;
+  state.board[idx(3, 4)] = BLACK;
+  state.board[idx(4, 3)] = BLACK;
+  state.board[idx(4, 4)] = WHITE;
+
+  state.turn = BLACK;
+  state.history = [];
+  state.lastMove = -1;
+  state.passed = null;
+  state.over = false;
+  state.thinking = false;
+  state.thinkId++;
+  state.anim = null;
+  state.hover = -1;
+
+  over.hidden = true;
+  diffSel.disabled = state.mode === 'two';
+  sideSel.disabled = state.mode === 'two';
+  refresh();
+  save();
+  maybeThink();
+}
+
+function refresh() {
+  state.moves = state.over ? new Map() : movesFor(state.board, state.turn);
+  showCounts();
+  showStatus();
+}
+
+function playMove(at) {
+  const flips = state.moves.get(at);
+  if (!flips) return false;
+
+  state.history.push({ board: Int8Array.from(state.board), turn: state.turn });
+  if (state.history.length > 60) state.history.shift();
+
+  const side = state.turn;
+  make(state.board, at, side, flips);
+  state.lastMove = at;
+  state.anim = { placed: at, flips, side, t: 0 };
+  sfxPlace(flips.length);
+
+  advance(side);
+  return true;
+}
+
+// Hand the turn on, sitting a side out if it has nothing to play and ending
+// the game if neither of them has.
+function advance(justPlayed) {
+  const next = other(justPlayed);
+  if (movesFor(state.board, next).size) {
+    state.turn = next;
+    state.passed = null;
+  } else if (movesFor(state.board, justPlayed).size) {
+    state.turn = justPlayed;
+    state.passed = next;
+  } else {
+    state.turn = next;
+    state.passed = null;
+    state.over = true;
+  }
+
+  refresh();
+  save();
+  if (state.over) finish();
+  else maybeThink();
+}
+
+function maybeThink() {
+  if (state.over || state.mode !== 'cpu') return;
+  if (state.turn === state.you) return;
+
+  state.thinking = true;
+  const id = ++state.thinkId;
+  showStatus();
+  // A beat before it answers, and a token so an undo during that beat cancels
+  // it. It also waits out the discs still turning over, so one move finishes
+  // on screen before the next starts.
+  setTimeout(function go() {
+    if (id !== state.thinkId || !state.thinking) return;
+    if (state.anim) { setTimeout(go, 60); return; }
+    const at = chooseMove(state.turn);
+    state.thinking = false;
+    if (at >= 0) playMove(at);
+    else showStatus();
+  }, 200);
+}
+
+function finish() {
+  const { black, white } = counts(state.board);
+  const winner = black === white ? 0 : black > white ? BLACK : WHITE;
+
+  if (!winner) {
+    overTitle.textContent = 'A draw';
+    overText.textContent = 'Thirty-two each.';
+  } else {
+    const name = winner === BLACK ? 'Black' : 'White';
+    overTitle.textContent = state.mode === 'cpu'
+      ? (winner === state.you ? 'You win' : 'The computer wins')
+      : name + ' wins';
+    overText.textContent = Math.max(black, white) + ' to ' + Math.min(black, white)
+      + ', ' + name.toLowerCase() + ' on top.';
+  }
+  over.hidden = false;
+  clearSave();
+
+  if (!winner) sfxDraw();
+  else if (state.mode === 'two' || winner === state.you) sfxWin();
+  else sfxLose();
+}
+
+function undo() {
+  if (state.anim) return;
+  state.thinking = false;
+  state.thinkId++;
+
+  // Against the computer, step back past its reply as well, so the undo hands
+  // the move back to you rather than to it.
+  let target = state.history.length - 1;
+  if (state.mode === 'cpu') {
+    while (target > 0 && state.history[target].turn !== state.you) target--;
+    if (state.history[target] && state.history[target].turn !== state.you) target = -1;
+  }
+  if (target < 0 || !state.history[target]) return;
+
+  const snap = state.history[target];
+  state.history.length = target;
+  state.board.set(snap.board);
+  state.turn = snap.turn;
+  state.over = false;
+  state.passed = null;
+  state.lastMove = -1;
+  state.anim = null;
+  over.hidden = true;
+  refresh();
+  save();
+  if (state.mode === 'cpu' && state.turn !== state.you) maybeThink();
+}
+
+// ---------------------------------------------------------------- storage
+function save() {
+  if (state.over) return;
+  try {
+    localStorage.setItem(SAVE_KEY, JSON.stringify({
+      board: Array.from(state.board), turn: state.turn,
+      mode: state.mode, difficulty: state.difficulty,
+      you: state.you, lastMove: state.lastMove,
+    }));
+  } catch { /* storage blocked: play on without it */ }
+}
+
+function restore() {
+  let data;
+  try { data = JSON.parse(localStorage.getItem(SAVE_KEY) || 'null'); } catch { return false; }
+  if (!data || !Array.isArray(data.board) || data.board.length !== N * N) return false;
+  if (data.board.some(v => v !== 0 && v !== BLACK && v !== WHITE)) return false;
+  if (data.turn !== BLACK && data.turn !== WHITE) return false;
+
+  modeSel.value = data.mode === 'two' ? 'two' : 'cpu';
+  diffSel.value = ['easy', 'medium', 'hard'].includes(data.difficulty) ? data.difficulty : 'medium';
+  sideSel.value = data.you === WHITE ? '2' : '1';
+  newGame();
+
+  state.board.set(Int8Array.from(data.board));
+  state.turn = data.turn;
+  state.lastMove = typeof data.lastMove === 'number' ? data.lastMove : -1;
+  state.history = [];
+  state.thinking = false;
+  state.thinkId++;                          // cancel the reply newGame lined up
+
+  if (!movesFor(state.board, state.turn).size
+      && !movesFor(state.board, other(state.turn)).size) return false;
+
+  refresh();
+  maybeThink();
+  return true;
+}
+
+function clearSave() {
+  try { localStorage.removeItem(SAVE_KEY); } catch { /* nothing to clean up */ }
+}
+
+// ---------------------------------------------------------------- sound
+let audio = null;
+
+function initAudio() {
+  if (audio) return;
+  const Ctx = window.AudioContext || window.webkitAudioContext;
+  if (Ctx) audio = new Ctx();
+}
+
+function tone(freq, dur, type = 'triangle', peak = 0.07, delay = 0) {
+  if (!state.sound || !audio || audio.state !== 'running') return;
+  const t = audio.currentTime + delay;
+  const osc = audio.createOscillator();
+  const gain = audio.createGain();
+  osc.type = type;
+  osc.frequency.setValueAtTime(freq, t);
+  gain.gain.setValueAtTime(0.0001, t);
+  gain.gain.exponentialRampToValueAtTime(peak, t + 0.008);
+  gain.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+  osc.connect(gain).connect(audio.destination);
+  osc.start(t);
+  osc.stop(t + dur + 0.03);
+}
+
+// A big turn sounds bigger: one click for the disc laid, then one per flip.
+function sfxPlace(flips) {
+  tone(300, 0.05, 'square', 0.04);
+  for (let i = 0; i < Math.min(flips, 6); i++) tone(420 + i * 55, 0.05, 'triangle', 0.04, 0.09 + i * 0.05);
+}
+function sfxPass() { tone(200, 0.14, 'sine', 0.05); }
+function sfxWin()  { [523, 659, 784, 1047].forEach((f, i) => tone(f, 0.26, 'triangle', 0.08, i * 0.09)); }
+function sfxLose() { [392, 311, 233].forEach((f, i) => tone(f, 0.26, 'sawtooth', 0.07, i * 0.12)); }
+function sfxDraw() { [440, 440].forEach((f, i) => tone(f, 0.2, 'triangle', 0.06, i * 0.18)); }
+
+// ---------------------------------------------------------------- drawing
+const cv = document.getElementById('boardCv');
+const ctx = cv.getContext('2d');
+const over = document.getElementById('over');
+const overTitle = document.getElementById('overTitle');
+const overText = document.getElementById('overText');
+const overMain = document.getElementById('overMain');
+const overUndo = document.getElementById('overUndo');
+const statusText = document.getElementById('statusText');
+const outBlack = document.getElementById('outBlack');
+const outWhite = document.getElementById('outWhite');
+const scoreBlack = document.getElementById('scoreBlack');
+const scoreWhite = document.getElementById('scoreWhite');
+const undoBtn = document.getElementById('undoBtn');
+const newBtn = document.getElementById('newBtn');
+const soundBtn = document.getElementById('soundBtn');
+const modeSel = document.getElementById('modeSel');
+const diffSel = document.getElementById('diffSel');
+const sideSel = document.getElementById('sideSel');
+const hintSel = document.getElementById('hintSel');
+
+const FLIP_MS = 240, FLIP_STAGGER = 55, PLACE_MS = 150;
+
+function fit() {
+  const dpr = Math.min(3, window.devicePixelRatio || 1);
+  const rect = cv.getBoundingClientRect();
+  const w = Math.max(1, Math.round(rect.width * dpr));
+  if (cv.width !== w || cv.height !== w) { cv.width = w; cv.height = w; }
+  return { w, s: w / N };
+}
+
+function discAt(x, y, r, side, squash = 1) {
+  ctx.save();
+  ctx.translate(x, y);
+  const rx = Math.max(0.6, r * Math.abs(squash));
+  const g = ctx.createLinearGradient(0, -r, 0, r);
+  if (side === BLACK) { g.addColorStop(0, '#3b414c'); g.addColorStop(1, '#111419'); }
+  else { g.addColorStop(0, '#ffffff'); g.addColorStop(1, '#c8ced8'); }
+  ctx.fillStyle = g;
+  ctx.beginPath();
+  ctx.ellipse(0, 0, rx, r, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = side === BLACK ? 'rgba(255,255,255,0.14)' : 'rgba(0,0,0,0.22)';
+  ctx.lineWidth = Math.max(1, r * 0.06);
+  ctx.stroke();
+  ctx.restore();
+}
+
+function render() {
+  const { w, s } = fit();
+  const now = performance.now();
+
+  ctx.fillStyle = '#1f6b47';
+  ctx.fillRect(0, 0, w, w);
+
+  ctx.strokeStyle = 'rgba(0,0,0,0.42)';
+  ctx.lineWidth = Math.max(1, s * 0.022);
+  for (let i = 1; i < N; i++) {
+    ctx.beginPath(); ctx.moveTo(i * s, 0); ctx.lineTo(i * s, w); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(0, i * s); ctx.lineTo(w, i * s); ctx.stroke();
+  }
+  ctx.fillStyle = 'rgba(0,0,0,0.45)';
+  for (const [r, c] of [[2, 2], [2, 6], [6, 2], [6, 6]]) {
+    ctx.beginPath();
+    ctx.arc(c * s, r * s, s * 0.07, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  const rad = s * 0.40;
+  const anim = state.anim;
+  const flipping = new Map();
+  if (anim) {
+    for (let i = 0; i < anim.flips.length; i++) {
+      const at = anim.flips[i];
+      const ar = Math.floor(at / N), ac = at % N;
+      const pr = Math.floor(anim.placed / N), pc = anim.placed % N;
+      const dist = Math.max(Math.abs(ar - pr), Math.abs(ac - pc));
+      flipping.set(at, (dist - 1) * FLIP_STAGGER);
+    }
+  }
+
+  for (let i = 0; i < N * N; i++) {
+    const v = state.board[i];
+    if (!v) continue;
+    const r = Math.floor(i / N), c = i % N;
+    const x = c * s + s / 2, y = r * s + s / 2;
+
+    if (anim && i === anim.placed) {
+      const p = Math.min(1, anim.t / PLACE_MS);
+      discAt(x, y, rad * (0.45 + 0.55 * p), v);
+      continue;
+    }
+    if (anim && flipping.has(i)) {
+      const local = anim.t - flipping.get(i);
+      if (local <= 0) { discAt(x, y, rad, other(anim.side)); continue; }
+      if (local < FLIP_MS) {
+        const p = local / FLIP_MS;
+        // The disc turns on its edge: a cosine takes it through nothing at all
+        // halfway, which is where the colour changes.
+        discAt(x, y, rad, p < 0.5 ? other(anim.side) : anim.side, Math.cos(p * Math.PI));
+        continue;
+      }
+    }
+    discAt(x, y, rad, v);
+  }
+
+  // Where the side to play may go, and where the last disc landed.
+  if (state.hints && !state.over && !anim
+      && (state.mode === 'two' || state.turn === state.you)) {
+    ctx.fillStyle = state.turn === BLACK ? 'rgba(0,0,0,0.30)' : 'rgba(255,255,255,0.38)';
+    for (const at of state.moves.keys()) {
+      const r = Math.floor(at / N), c = at % N;
+      const big = state.hover === at;
+      ctx.beginPath();
+      ctx.arc(c * s + s / 2, r * s + s / 2, s * (big ? 0.30 : 0.12), 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+
+  if (state.lastMove >= 0 && !anim) {
+    const r = Math.floor(state.lastMove / N), c = state.lastMove % N;
+    ctx.strokeStyle = 'rgba(99,185,138,0.95)';
+    ctx.lineWidth = Math.max(1.5, s * 0.05);
+    ctx.beginPath();
+    ctx.arc(c * s + s / 2, r * s + s / 2, rad * 1.06, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+}
+
+function showCounts() {
+  const { black, white } = counts(state.board);
+  outBlack.textContent = String(black);
+  outWhite.textContent = String(white);
+  scoreBlack.classList.toggle('turn', !state.over && state.turn === BLACK);
+  scoreWhite.classList.toggle('turn', !state.over && state.turn === WHITE);
+}
+
+function showStatus() {
+  const name = side => (side === BLACK ? 'Black' : 'White');
+  let text;
+
+  if (state.over) {
+    const { black, white } = counts(state.board);
+    text = black === white ? 'Drawn, 32 each.'
+      : (black > white ? 'Black' : 'White') + ' wins, '
+        + Math.max(black, white) + ' to ' + Math.min(black, white) + '.';
+  } else if (state.thinking) text = 'The computer is thinking…';
+  else if (state.mode === 'two') text = name(state.turn) + ' to play';
+  else text = state.turn === state.you ? 'Your turn' : 'The computer plays';
+
+  if (state.passed && !state.over) {
+    text += ' — ' + name(state.passed).toLowerCase() + ' had no legal move';
+  }
+  statusText.textContent = text;
+
+  undoBtn.disabled = !state.history.length || !!state.anim;
+  overUndo.disabled = !state.history.length;
+}
+
+// ---------------------------------------------------------------- the loop
+let last = 0;
+function frame(now) {
+  const dt = Math.min(64, last ? now - last : 16);
+  last = now;
+
+  if (state.anim) {
+    state.anim.t += dt;
+    const longest = state.anim.flips.reduce((m, at) => {
+      const ar = Math.floor(at / N), ac = at % N;
+      const pr = Math.floor(state.anim.placed / N), pc = state.anim.placed % N;
+      return Math.max(m, Math.max(Math.abs(ar - pr), Math.abs(ac - pc)));
+    }, 1);
+    if (state.anim.t > (longest - 1) * FLIP_STAGGER + FLIP_MS) {
+      const passed = state.passed;
+      state.anim = null;
+      showStatus();
+      if (passed) sfxPass();
+    }
+  }
+
+  render();
+  requestAnimationFrame(frame);
+}
+
+// ---------------------------------------------------------------- input
+function squareAt(clientX, clientY) {
+  const rect = cv.getBoundingClientRect();
+  const c = Math.floor(((clientX - rect.left) / rect.width) * N);
+  const r = Math.floor(((clientY - rect.top) / rect.height) * N);
+  if (r < 0 || r >= N || c < 0 || c >= N) return -1;
+  return idx(r, c);
+}
+
+function playable() {
+  if (state.over || state.thinking || state.anim) return false;
+  return state.mode === 'two' || state.turn === state.you;
+}
+
+cv.addEventListener('pointermove', e => {
+  state.hover = playable() ? squareAt(e.clientX, e.clientY) : -1;
+});
+cv.addEventListener('pointerleave', () => { state.hover = -1; });
+
+cv.addEventListener('pointerdown', e => {
+  if (!playable()) return;
+  const at = squareAt(e.clientX, e.clientY);
+  if (at >= 0) playMove(at);
+});
+
+document.addEventListener('keydown', e => {
+  if (e.target.tagName === 'SELECT') return;
+  if (e.target.tagName === 'BUTTON' && (e.key === ' ' || e.key === 'Enter')) return;
+  if (e.key === 'u' || e.key === 'U') { e.preventDefault(); undo(); }
+});
+
+undoBtn.addEventListener('click', undo);
+overUndo.addEventListener('click', undo);
+newBtn.addEventListener('click', () => { clearSave(); newGame(); });
+overMain.addEventListener('click', () => { clearSave(); newGame(); });
+
+soundBtn.addEventListener('click', () => {
+  state.sound = !state.sound;
+  soundBtn.textContent = state.sound ? 'Sound on' : 'Sound off';
+});
+
+modeSel.addEventListener('change', () => { clearSave(); newGame(); });
+diffSel.addEventListener('change', () => { clearSave(); newGame(); });
+sideSel.addEventListener('change', () => { clearSave(); newGame(); });
+hintSel.addEventListener('change', () => { state.hints = hintSel.value === 'on'; });
+
+document.addEventListener('pointerdown', () => {
+  initAudio();
+  if (audio && audio.state === 'suspended') audio.resume();
+});
+
+if (!restore()) newGame();
+requestAnimationFrame(frame);
+</script>
+
+</body>
+</html>
